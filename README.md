@@ -1,9 +1,24 @@
-# EfficientSAM3: Progressive Hierachical Knowledge Distillation (PhD) from SAM1, 2 and 3
+### EfficientSAM3: Progressive Hierachical Knowledge Distillation (PhD) from SAM1, 2 and 3
 [Chengxi Simon Zeng](https://simonzeng7108.github.io/about/), [Yuxuan Jiang](https://pikapi22.github.io/), [Aaron Zhang](https://fan-aaron-zhang.github.io/)
 
 Visual Information Lab, University of Bristol
 
 [[Paper](#)] [[Project Page](#)] [[Hugging Face](#)]
+
+---
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Inference](#inference)
+- [Training and Evaluation](#training-and-evaluation)
+- [Checkpoints](#efficientsam3-model-zoo--weight-release)
+- [CoreML / ONNX Export](#coreml--onnx-export)
+- [Web Demo](#web-demo)
+- [Dev Todo List](#development-to-do-list)
+- [Citation](#citation)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
 
 ---
 
@@ -51,7 +66,7 @@ Visual Information Lab, University of Bristol
 <details>
 <summary>Three-Stage Progressive Training Curriculum</summary>
 
-EfficientSAM3 is trained through a three-stage progressive training curriculum:
+EfficientSAM3 is trained through a three-stage progressive distillation:
 
 ### Stage 1: Encoder Distillation (Image-Level Segmentation)
 
@@ -75,7 +90,64 @@ EfficientSAM3 is trained through a three-stage progressive training curriculum:
 
 ---
 
-## 4. EfficientSAM3 Model Zoo & Weight Release
+## Installation
+
+The code requires `python>=3.8`. We recommend `torch==2.0.0` and `torchvision==0.15.1`. Please refer to the [official PyTorch installation instructions](https://pytorch.org/get-started/locally/).
+
+Clone the repository locally:
+
+```bash
+git clone https://github.com/SimonZeng7108/efficientsam3.git && cd efficientsam3
+```
+
+Install additional dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Install EfficientSAM3:
+
+```bash
+pip install -e .
+```
+
+---
+
+## Inference
+
+Download checkpoints (refer to [Checkpoints](#efficientsam3-model-zoo--weight-release) for more details):
+
+```bash
+mkdir -p weights
+# Example: download an ES-TV-S Stage 1 encoder checkpoint
+wget -P weights/ https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/weights/es_tv_s_stage1.pth
+```
+
+Use EfficientSAM3 in Python:
+
+```python
+from efficientsam3 import SamPredictor, sam_model_registry
+
+# Load model
+sam = sam_model_registry["es_tv_s"](checkpoint="weights/es_tv_s_stage1.pth")
+predictor = SamPredictor(sam)
+predictor.set_image(<your_image>)
+
+# Generate masks with prompts
+masks, _, _ = predictor.predict(<input_prompts>)
+```
+
+---
+
+## Training and Evaluation
+
+Please refer to [README_TRAIN.md](README_TRAIN.md) for training and evaluation details.
+
+---
+
+
+## EfficientSAM3 Model Zoo & Weight Release
 
 | Model Name | Backbone | Parameters | Stage 1 Weights<br/>(Encoder Distilled) | Stage 2 Weights<br/>(Memory Module Trained) | Stage 3 Weights<br/>(End-to-End Fine-Tuned) |
 |------------|----------|------------|----------------------------------------|---------------------------------------------|---------------------------------------------|
@@ -92,6 +164,26 @@ EfficientSAM3 is trained through a three-stage progressive training curriculum:
 ---
 
 
+## CoreML / ONNX Export
+
+Coming soon: export pipelines to ONNX and CoreML for cross-platform deployment.
+
+---
+
+## Web Demo
+
+Coming soon: an interactive web demo for real-time concept segmentation and tracking.
+
+---
+## Development To-Do List
+
+- [x] **Release Stage 1 Encoder Weights**: Distilled encoder weights for all 9 variants (RepViT, TinyViT, EfficientViT)
+- [ ] **Release Stage 2 Memory Bank Aligned Model Weights**: Models with Perceiver-based memory compression trained on SA-V dataset
+- [ ] **Release Stage 3 Fine-Tuned Model Weights**: End-to-end fine-tuned models on SAM3 dataset with full PCS capabilities
+- [ ] **ONNX/CoreML Export**: Export models to ONNX and CoreML formats for cross-platform deployment
+- [ ] **Web Demo**: Interactive web demonstration for real-time concept segmentation and tracking
+
+---
 
 
 ## Citation

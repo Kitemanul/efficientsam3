@@ -1,0 +1,128 @@
+# Ignore common large binary files across the repository
+
+# Model weights and checkpoints
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.tflite
+*.pb
+*.h5
+*.weights
+*.bin
+
+# Archives and compressed datasets
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.gz
+*.bz2
+*.xz
+*.zst
+
+# Images (often large)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tif
+*.tiff
+*.webp
+*.svg
+
+# Video files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.flv
+*.wmv
+*.m4v
+
+# Audio files
+*.wav
+*.mp3
+*.flac
+*.aac
+*.ogg
+*.m4a
+
+# Array/data containers (can be very large)
+*.npy
+*.npz
+*.mat
+*.pkl
+*.pickle
+*.joblib
+*.parquet
+*.feather
+*.arrow
+*.hdf5
+
+# ML outputs and run artifacts
+runs/
+wandb/
+mlruns/
+lightning_logs/
+checkpoints/
+outputs/
+output/
+weights/
+artifacts/
+events.out.tfevents.*
+
+# Caches and temporary files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+*.log
+*.tmp
+*.temp
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.*
+!.env.example
+
+# Editors/IDEs
+.vscode/
+.idea/
+*.iml
+
+# Build/distribution artifacts
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Python caches and test artifacts
+.mypy_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Log directories
+logs/
+
+
+
