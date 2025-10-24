@@ -9,7 +9,6 @@ Visual Information Lab, University of Bristol
 
 ## Table of Contents
 
-- [Table of Contents](#table-of-contents)
 - [Updates](#updates)
 - [Installation](#installation)
 - [Inference](#inference)
@@ -19,6 +18,7 @@ Visual Information Lab, University of Bristol
 - [CoreML / ONNX Export](#coreml--onnx-export)
 - [Web Demo](#web-demo)
 - [Development To-Do List](#development-to-do-list)
+- [Call for Pull Requests](#call-for-pull-requests)
 - [Citation](#citation)
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
@@ -27,7 +27,7 @@ Visual Information Lab, University of Bristol
 
 ## Updates
 
-- **[2025/10/18]** 🎉 We first release EfficientSAM3 weights for all 9 encoder variants (Stage 1: Encoder Distillation)
+- **[2025/10/18]** 🎉 We first release EfficientSAM3 weights for all 9 encoder variants (Stage 1: Unsupervised Encoder Distillation)
 
 ---
 
@@ -200,6 +200,19 @@ Coming soon: an interactive web demo for real-time concept segmentation and trac
 - [ ] **ONNX/CoreML Export**: Export models to ONNX and CoreML formats for cross-platform deployment
 - [ ] **Web Demo**: Interactive web demonstration for real-time concept segmentation and tracking
 
+---
+
+## Call for Pull Requests
+The idea for this repository originated from my work on SAM2 at Amazon, particularly as part of the research described in [this paper](https://ieeexplore.ieee.org/abstract/document/11084428). Since company policy, I cannot share the codebase. This year I am super excited to work on making SAM3 more efficient and accessible to the community.
+
+We welcome contributions to EfficientSAM3! Please feel free to submit pull requests to improve the codebase, add new features, or fix bugs. Particularly, we are looking for:
+- Efficient MedSAM3 integration (see [MedSAM2 by Bo Wang Lab](https://github.com/bowang-lab/MedSAM2))
+- A Gradio demo (e.g. [EfficientTAM on Hugging Face Spaces](https://huggingface.co/spaces/yunyangx/EfficientTAM))
+- A web demo deployed with Vercel (e.g. [Segment Anything Web UI](https://segment-anything-webui.vercel.app/))
+- Annotation tools, such as [X-AnyLabeling](https://github.com/CVHub520/X-AnyLabeling) and [AnyLabeling](https://github.com/vietanhdev/anylabeling)
+- An iOS or Android app (e.g. [Cutcha Photo on the App Store](https://apps.apple.com/us/app/cutcha-photo/id6478521132))
+- An NVCC-based desktop application
+- Anything else that you think is cool!
 ---
 
 
