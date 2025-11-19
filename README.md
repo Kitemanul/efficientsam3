@@ -106,25 +106,44 @@ Stage 3: We fine-tune the complete pipeline using SAM3 data. <br>
 
 ## Installation
 
-The code requires `python>=3.8`. We recommend `torch==2.0.0` and `torchvision==0.15.1`. Please refer to the [official PyTorch installation instructions](https://pytorch.org/get-started/locally/).
+EfficientSAM3 purposely shares the same software contract as upstream SAM3:
 
-Clone the repository locally:
+- **Python** ≥ 3.12
+- **PyTorch** 2.7.0 (CUDA 12.6 build recommended)
+- **CUDA**-capable GPUs with drivers that support CUDA ≥ 12.6
 
-```bash
-git clone https://github.com/SimonZeng7108/efficientsam3.git && cd efficientsam3
-```
-
-Install additional dependencies:
+Follow the exact environment setup from the [official SAM3 README](sam3/README.md) or use the condensed steps below (single-node example):
 
 ```bash
-pip install -r requirements.txt
+git clone https://github.com/SimonZeng7108/efficientsam3.git
+cd efficientsam3
+
+conda create -n efficientsam3 python=3.12 -y
+conda activate efficientsam3
+
+pip install --upgrade pip
+pip install torch==2.7.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+
+# Install repo dependencies via the root pyproject (brings in SAM3 + Stage-1 extras)
+pip install -e ".[stage1]"
 ```
 
-Install EfficientSAM3:
+> **Note:** If Meta updates the official SAM3 requirements (e.g., newer PyTorch/CUDA),
+> mirror those changes here to stay ABI-compatible with the teacher checkpoints.
 
-```bash
-pip install -e .
-```
+The editable install exposes both the upstream `sam3` package and the Stage‑1 modules, so you can import them from any working directory. Use `pip install -e .` (without extras) when you only need the inference utilities.
+
+### Stage 1 Quick Start
+
+Stage‑1 encoder distillation is documented in detail inside [README_stage1.md](README_stage1.md). The short version:
+
+1. Place the SA‑1B dataset under `data/sa-1b` (or point `DATA.DATA_PATH` elsewhere).
+2. Download `sam3.pt` into `sam3_checkpoints/`.
+3. Save teacher embeddings with `bash stage1/scripts/save_stage1_embeddings.sh`.
+4. Train any student backbone (RepViT, TinyViT, EfficientViT) with `bash stage1/scripts/train_stage1_student.sh CFG=stage1/configs/<model>.yaml`.
+5. Merge the distilled encoder with the full SAM3 checkpoint via `python stage1/convert_stage1_weights.py ...`.
+
+Refer to the Stage‑1 README for configuration details, checkpoint locations, and troubleshooting tips.
 
 ---
 
