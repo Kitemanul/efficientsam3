@@ -98,35 +98,39 @@ def extract_all_tars(source_dir: Path, num_workers: int = None):
 
 def get_all_image_annotation_pairs(source_dir: Path) -> List[Tuple[Path, Path]]:
     """
-    Scan all subdirectories in source_dir and collect image-annotation pairs.
+    Scan source_dir and its subdirectories to collect image-annotation pairs.
     """
     pairs = []
-    folder_stats = {}
     
-    # Get all subdirectories (excluding the output dir if it's inside)
-    subdirs = [d for d in source_dir.iterdir() if d.is_dir() and not d.name.startswith('.')]
-    subdirs.sort()
-    
-    print(f"\nFound {len(subdirs)} folder(s) to scan for images")
-    
-    for subdir in subdirs:
-        # Skip target directories if they are in the same folder
-        if subdir.name in ["images", "annotations", "SA-1B-10P"]: 
-            continue
+    # Directories to scan: source_dir itself + subdirectories
+    dirs_to_scan = [source_dir]
+    try:
+        subdirs = [d for d in source_dir.iterdir() if d.is_dir() and not d.name.startswith('.')]
+        subdirs.sort()
+        dirs_to_scan.extend(subdirs)
+    except FileNotFoundError:
+        return []
 
-        print(f"Scanning {subdir.name}...", end=" ")
+    # Filter out output dirs if they exist in source_dir
+    excluded_names = ["images", "annotations", "SA-1B-10P", "SA-1B-1P", "train", "val"]
+    dirs_to_scan = [d for d in dirs_to_scan if d.name not in excluded_names]
+
+    print(f"\nScanning {len(dirs_to_scan)} directories for images...")
+    
+    for d in dirs_to_scan:
+        dir_name = d.name if d != source_dir else "root"
         
         folder_pairs = 0
-        # Get all jpg files in this subdirectory
-        for img_file in subdir.glob("*.jpg"):
+        # Get all jpg files in this directory
+        for img_file in d.glob("*.jpg"):
             # Check if corresponding json exists
             json_file = img_file.with_suffix('.json')
             if json_file.exists():
                 pairs.append((img_file, json_file))
                 folder_pairs += 1
         
-        folder_stats[subdir.name] = folder_pairs
-        print(f"found {folder_pairs} pairs")
+        if folder_pairs > 0:
+            print(f"  {dir_name}: found {folder_pairs} pairs")
     
     return pairs
 
@@ -206,8 +210,8 @@ def copy_files(pairs: List[Tuple[Path, Path]],
 
 def main():
     # ================= CONFIGURATION =================
-    source_dir = Path("keep_tars")   # Where the .tar files are
-    output_dir = Path("SA-1B-10P")   # Where the Train/Val split goes
+    source_dir = Path("sa-1b-1p")   # Where the .tar files are
+    output_dir = Path("SA-1B-1P")   # Where the Train/Val split goes
     val_ratio = 0.1 
     move_files = True                # Move after extracting?
     num_workers = cpu_count()        # Use all cores
@@ -223,16 +227,20 @@ def main():
         return
 
     # -------------------------------------------------
-    # PHASE 1: EXTRACT TARS
+    # PHASE 1: CHECK & EXTRACT
     # -------------------------------------------------
-    print(f"\nPhase 1: Checking for .tar files in '{source_dir}'...")
-    extract_all_tars(source_dir, num_workers)
-
-    # -------------------------------------------------
-    # PHASE 2: SCAN EXTRACTED FOLDERS
-    # -------------------------------------------------
-    print(f"\nPhase 2: Scanning for extracted images/annotations...")
+    print(f"\nPhase 1: Checking for existing images/annotations...")
     pairs = get_all_image_annotation_pairs(source_dir)
+    
+    if len(pairs) > 0:
+        print(f"Found {len(pairs)} existing pairs. Skipping extraction.")
+    else:
+        print(f"No existing pairs found. Proceeding to extraction.")
+        print(f"Checking for .tar files in '{source_dir}'...")
+        extract_all_tars(source_dir, num_workers)
+
+        print(f"\nPhase 2: Scanning for extracted images/annotations...")
+        pairs = get_all_image_annotation_pairs(source_dir)
     
     if len(pairs) == 0:
         print("Error: No image-annotation pairs found! Did the extraction work?")
