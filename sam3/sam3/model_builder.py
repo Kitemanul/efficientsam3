@@ -646,6 +646,145 @@ def download_ckpt_from_hf():
     return checkpoint_path
 
 
+def _create_efficientvit_vision_backbone(
+    compile_mode=None, enable_inst_interactivity=True, efficientvit_model="b0"
+) -> Sam3DualViTDetNeck:
+    """Create EfficientSAM3 visual backbone with EfficientViT and neck."""
+    from sam3.backbones.efficientvit.efficientvit.backbone import (
+        efficientvit_backbone_b0,
+        efficientvit_backbone_b1,
+        efficientvit_backbone_b2,
+    )
+    
+    # Position encoding
+    position_encoding = _create_position_encoding(precompute_resolution=1008)
+    
+    # EfficientViT backbone
+    if efficientvit_model == "b0":
+        efficientvit_backbone = efficientvit_backbone_b0()
+    elif efficientvit_model == "b1":
+        efficientvit_backbone = efficientvit_backbone_b1()
+    elif efficientvit_model == "b2":
+        efficientvit_backbone = efficientvit_backbone_b2()
+    else:
+        raise ValueError(f"Unknown EfficientViT model: {efficientvit_model}")
+    
+    # Create a wrapper to make EfficientViT compatible with Sam3DualViTDetNeck
+    # The neck expects a trunk with channel_list attribute
+    class EfficientViTTrunkWrapper(nn.Module):
+        def __init__(self, efficientvit_backbone):
+            super().__init__()
+            self.backbone = efficientvit_backbone
+            # Get the output channel dimension from the backbone
+            self.channel_list = [efficientvit_backbone.width_list[-1]]
+        
+        def forward(self, tensor_list):
+            # EfficientViT expects a single tensor, not a list
+            x = tensor_list[0] if isinstance(tensor_list, list) else tensor_list
+            out = self.backbone(x)
+            # Return as list to match expected format
+            return [out['stage_final']]
+    
+    wrapped_backbone = EfficientViTTrunkWrapper(efficientvit_backbone)
+    
+    vit_neck: Sam3DualViTDetNeck = _create_vit_neck(
+        position_encoding,
+        wrapped_backbone,
+        enable_inst_interactivity=enable_inst_interactivity,
+    )
+    return vit_neck
+
+
+def build_efficientsam3_image_model(
+    bpe_path=None,
+    device="cuda" if torch.cuda.is_available() else "cpu",
+    eval_mode=True,
+    checkpoint_path=None,
+    load_from_HF=False,
+    enable_segmentation=True,
+    enable_inst_interactivity=False,
+    compile=False,
+    efficientvit_model="b0",
+):
+    """
+    Build EfficientSAM3 image model with EfficientViT backbone
+
+    Args:
+        bpe_path: Path to the BPE tokenizer vocabulary
+        device: Device to load the model on ('cuda' or 'cpu')
+        eval_mode: Whether to set the model to evaluation mode
+        checkpoint_path: Optional path to EfficientSAM3 model checkpoint
+        load_from_HF: Whether to load checkpoint from HuggingFace (if available)
+        enable_segmentation: Whether to enable segmentation head
+        enable_inst_interactivity: Whether to enable instance interactivity (SAM 1 task)
+        compile: To enable compilation, set to True
+        efficientvit_model: EfficientViT model variant ('b0', 'b1', 'b2')
+
+    Returns:
+        An EfficientSAM3 image model
+    """
+    if bpe_path is None:
+        bpe_path = os.path.join(
+            os.path.dirname(__file__), "..", "assets", "bpe_simple_vocab_16e6.txt.gz"
+        )
+    # Create visual components with EfficientViT
+    compile_mode = "default" if compile else None
+    vision_encoder = _create_efficientvit_vision_backbone(
+        compile_mode=compile_mode,
+        enable_inst_interactivity=enable_inst_interactivity,
+        efficientvit_model=efficientvit_model,
+    )
+
+    # Create text components
+    text_encoder = _create_text_encoder(bpe_path)
+
+    # Create visual-language backbone
+    backbone = _create_vl_backbone(vision_encoder, text_encoder)
+
+    # Create transformer components
+    transformer = _create_sam3_transformer()
+
+    # Create dot product scoring
+    dot_prod_scoring = _create_dot_product_scoring()
+
+    # Create segmentation head if enabled
+    segmentation_head = (
+        _create_segmentation_head(compile_mode=compile_mode)
+        if enable_segmentation
+        else None
+    )
+
+    # Create geometry encoder
+    input_geometry_encoder = _create_geometry_encoder()
+    if enable_inst_interactivity:
+        sam3_pvs_base = build_tracker(apply_temporal_disambiguation=False)
+        inst_predictor = SAM3InteractiveImagePredictor(sam3_pvs_base)
+    else:
+        inst_predictor = None
+    # Create the SAM3 model
+    model = _create_sam3_model(
+        backbone,
+        transformer,
+        input_geometry_encoder,
+        segmentation_head,
+        dot_prod_scoring,
+        inst_predictor,
+        eval_mode,
+    )
+    if load_from_HF and checkpoint_path is None:
+        # For EfficientSAM3, you may need to specify a different HuggingFace repo
+        # checkpoint_path = download_ckpt_from_hf()  # Update this for EfficientSAM3
+        pass
+    # Load checkpoint if provided
+    if checkpoint_path is not None:
+        _load_checkpoint(model, checkpoint_path)
+
+    # Setup device and mode
+    model = _setup_device_and_mode(model, device, eval_mode)
+
+    return model
+
+
 def build_sam3_video_model(
     checkpoint_path: Optional[str] = None,
     load_from_HF=True,
