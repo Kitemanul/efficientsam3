@@ -36,17 +36,6 @@
 - [Acknowledgments](#acknowledgments)
 
 ---
-## 🔥 Teaser Image Model
-<p align="center">
-  <img src="https://github.com/SimonZeng7108/efficientsam3/blob/main/images/es-ev-s-teaser.jpg" width="30%">
-</p>
-
- **EfficientViT-B0 (0.68M params)** distilled from **SAM3 Encoder (461.84M)** — **99.85% smaller**, trained on **1% SA-1B**.
-
-**Download Weight:** [Google Drive](https://drive.google.com/file/d/1MqtnQBaZWgtmURgBgQEEphnCNiLrPCjn/view?usp=drive_link). **Visualisation:** [Script](https://github.com/SimonZeng7108/efficientsam3/blob/stage1/sam3/efficientsam3_examples/efficientsam3_for_sam1_task_example.py) (Switch to Branch Stage1).
-
-
----
 
 ## Updates
 - **[2025/11/25]** Teaser model released. See Above. More models are baking in the oven🔥.
@@ -248,12 +237,14 @@ All meaningful contributions will be acknowledged and integrated into both the r
 If you use EfficientSAM3 in your research, please cite:
 
 ```bibtex
-@misc{efficientsam3,
-  title={EfficientSAM3: Progressive Hierachical Knowledge Distillation (PhD) from SAM1, 2 and 3},
-  author={Zeng, Chengxi Simon and Jiang, Yuxuan and Ge, Gao  and Wang, Shuai and Zhang, Fan Aaron},
-  institution={University of Bristol},
+@misc{zeng2025efficientsam3progressivehierarchicaldistillation,
+  title={EfficientSAM3: Progressive Hierarchical Distillation for Video Concept Segmentation from SAM1, 2, and 3}, 
+  author={Chengxi Zeng and Yuxuan Jiang and Gao Ge and Shuai Wang and Fan Aaron Zhang},
   year={2025},
-  howpublished={\url{https://github.com/SimonZeng7108/efficientsam3}}
+  eprint={2511.15833},
+  archivePrefix={arXiv},
+  primaryClass={cs.CV},
+  url={https://arxiv.org/abs/2511.15833}, 
 }
 ```
 
@@ -261,12 +252,12 @@ If you use EfficientSAM3 in your research, please cite:
 
 This repository is licensed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).
 
-This project builds upon [SAM](https://github.com/facebookresearch/segment-anything), [SAM2](https://github.com/facebookresearch/sam2), [SAM3](https://github.com/facebookresearch/sam3), [EdgeSAM](https://github.com/chongzhou96/EdgeSAM), [EdgeTAM](https://github.com/facebookresearch/EdgeTAM), [EfficientTAM](https://github.com/yformer/EfficientTAM), [RepViT](https://github.com/THU-MIG/RepViT), [TinyViT](https://github.com/wkcn/TinyViT), and [EfficientViT](https://github.com/mit-han-lab/efficientvit). Please refer to their respective licenses for usage terms.
+This project builds upon [SAM](https://github.com/facebookresearch/segment-anything), [SAM2](https://github.com/facebookresearch/sam2), [SAM3](https://github.com/facebookresearch/sam3), [EdgeSAM](https://github.com/chongzhou96/EdgeSAM), [EdgeTAM](https://github.com/facebookresearch/EdgeTAM), [EfficientTAM](https://github.com/yformer/EfficientTAM), [RepViT](https://github.com/THU-MIG/RepViT), [TinyViT](https://github.com/wkcn/TinyViT), [EfficientViT](https://github.com/mit-han-lab/efficientvit), and [MobileCLIP](https://github.com/apple/ml-mobileclip). Please refer to their respective licenses for usage terms.
 
 ## Acknowledgments
 
 This work is inspired by and builds upon:
-- **[SAM](https://github.com/facebookresearch/segment-anything)** (Meta AI) - Foundation segmentation model
+- **[SAM](https://github.com/facebookresearch/segment-anything)** - Foundation segmentation model
 - **[SAM2](https://github.com/facebookresearch/sam2)** - Video object segmentation capabilities
 - **[SAM3](https://github.com/facebookresearch/sam3)** - Promptable Concept Segmentation
 - **[EdgeSAM](https://github.com/chongzhou96/EdgeSAM)** - Efficient encoder distillation techniques
@@ -275,5 +266,5 @@ This work is inspired by and builds upon:
 - **[RepViT](https://github.com/THU-MIG/RepViT)** - Mobile-optimized Vision Transformer backbones
 - **[TinyViT](https://github.com/wkcn/TinyViT)** - Tiny Vision Transformer architectures
 - **[EfficientViT](https://github.com/mit-han-lab/efficientvit)** - Efficient Vision Transformer models
-
+- **[MobileCLIP](https://github.com/apple/ml-mobileclip)** - Fast Image-Text Models through Multi-Modal Reinforced Training
 
