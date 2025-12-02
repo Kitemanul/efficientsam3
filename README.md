@@ -6,15 +6,12 @@
 
 [[Paper](https://arxiv.org/abs/2511.15833)] [[Project Page](https://simonzeng7108.github.io/efficientsam3/)] [[Hugging Face](https://huggingface.co/Simon7108528/EfficientSAM3)] [[Discord](https://discord.gg/Vd2gXNE8)]
 ---
-## 🔥 Teaser Image Model
-<p align="center">
-  <img src="https://github.com/SimonZeng7108/efficientsam3/blob/main/images/es-ev-s-teaser.jpg" width="30%">
-</p>
-
- **EfficientViT-S (0.68M params)** distilled from **SAM3 Encoder (461.84M)** — **99.85% smaller**, trained on **1% SA-1B**.
-
-**Download Weight:** [Google Drive](https://drive.google.com/file/d/1MqtnQBaZWgtmURgBgQEEphnCNiLrPCjn/view?usp=drive_link). **Visualisation:** [Script](https://github.com/SimonZeng7108/efficientsam3/blob/stage1/sam3/efficientsam3_examples/efficientsam3_for_sam1_task_example.py) (Switch to Branch Stage1).
+## Updates
+- **[2025/12/02]** Stage 1 image encoder weights released for all 9 variants (RepViT, TinyViT, EfficientViT) - unsupervised distilled on 1% of SA-1B dataset.
+- **[2025/11/25]** Teaser model released. See Above. More models are baking in the oven🔥.
+- **[2025/10/18]** Project announced. Code and weights are not released yet; they will be published once SAM3 code is publicly available.
 ---
+
 
 ## Table of Contents
 
@@ -33,14 +30,6 @@
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
 - [Users](#users)
-
----
-
-## Updates
-- **[2025/12/02]** Stage 1 image encoder weights released for all 9 variants (RepViT, TinyViT, EfficientViT) - unsupervised distilled on 1% of SA-1B dataset.
-- **[2025/11/25]** Teaser model released. See Above. More models are baking in the oven🔥.
-- **[2025/10/18]** Project announced. Code and weights are not released yet; they will be published once SAM3 code is publicly available.
-
 
 ---
 
@@ -154,7 +143,13 @@ pip install -e ".[stage1]"
 Download checkpoints from the [Model Zoo](#efficientsam3-model-zoo--weight-release) section. All Stage 1 image encoder weights are available via Google Drive and Hugging Face links in the table below.
 
 **Quick Start (Image Segmentation):**
+#### 🔥 Teaser Image Model
+<p align="center">
+  <img src="https://github.com/SimonZeng7108/efficientsam3/blob/main/images/es-ev-s-teaser.jpg" width="30%">
+</p>
 
+ **EfficientViT-S (0.68M params)** distilled from **SAM3 Encoder (461.84M)** — **99.85% smaller**, trained on **1% SA-1B**.
+ 
 ```python
 from sam3.model_builder import build_efficientsam3_image_model
 from sam3.model.sam3_image_processor import Sam3Processor
@@ -321,7 +316,7 @@ Organizations and projects using EfficientSAM3:
 <table>
   <tr>
     <td align="center" width="20%">
-      <img src="images/users/esa.png" alt="European Space Agency" height="80"><br>
+      <img src="https://github.com/SimonZeng7108/simonzeng7108.github.io/blob/main/efficientsam3/static/images/esa.png" alt="European Space Agency" height="80"><br>
       <a href="https://www.esa.int/">European Space Agency</a>
     </td>
   </tr>
