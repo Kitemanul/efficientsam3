@@ -532,25 +532,20 @@ class LRSchedulerWrapper:
         param_groups = self.optimizer.param_groups
         for group in param_groups:
             if 'lr_scale' not in group:
+                group['lr_scale'] = 1.0
                 continue
             params = group['params']
             # update lr scale
-            lr_scale = None
+            lr_scale = 1.0  # Default to 1.0 instead of None
             for p in params:
                 if hasattr(p, 'lr_scale'):
-                    if lr_scale is None:
-                        lr_scale = p.lr_scale
-                    else:
-                        assert lr_scale == p.lr_scale, (lr_scale, p.lr_scale)
+                    lr_scale = p.lr_scale
+                    break  # Use the first lr_scale found
             if lr_scale != group['lr_scale']:
                 if is_main_process():
                     print('=' * 30)
-                    print("params:", [e.param_name for e in params])
-                    print(
-                        f"change lr scale: {group['lr_scale']} to {lr_scale}")
+                    print(f"change lr scale: {group['lr_scale']} to {lr_scale}")
             group['lr_scale'] = lr_scale
-            if lr_scale is not None:
-                group['lr'] *= lr_scale
 
     def state_dict(self):
         return self.lr_scheduler.state_dict()

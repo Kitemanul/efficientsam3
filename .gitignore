@@ -134,7 +134,8 @@ paper
 # Allowlist dataset helper scripts and lists inside data/
 !data/
 data/*
-!data/download_coco.sh
+!data/*.sh
+!data/*.py
 !data/download_lvis.sh
 !data/download_sa_v.sh
 !data/download_lvos.sh
@@ -142,13 +143,17 @@ data/*
 !data/download_mose.sh
 !data/download_ytvos.sh
 !data/download_sa1b.sh
+!data/download_datacomp.py
 !data/sa-v.txt
 !data/sa-1b.txt
+!data/sa-1b-1p.txt
 !data/sa-1b-10p.txt
 
 
 
 !images
+personal-site/*
+sam3_checkpoints/*
 !sam3
 personal-site
 sam3_checkpoints

@@ -124,7 +124,11 @@ def main():
 
     parser = argparse.ArgumentParser(description='EfficientSAM3 Interactive Instance Segmentation')
     parser.add_argument('--checkpoint', type=str, 
+<<<<<<< HEAD
                        default='/home/simon7108528_msi_linux/e-drive/side_projects/efficientsam3/output/efficient_sam3_tinyvit_s.pt', #
+=======
+                       default='/home/simon7108528_msi_linux/e-drive/side_projects/efficientsam3/output/efficient_sam3_efficientvit_s.pt', #
+>>>>>>> stage1_text_encoder
                        help='Path to EfficientSAM3 checkpoint')
     parser.add_argument('--image', type=str, 
                        default=os.path.join(assets_dir, 'images/truck.jpg'),
@@ -144,6 +148,10 @@ def main():
     args = parser.parse_args()
 
     if args.headless:
+<<<<<<< HEAD
+=======
+        # import matplotlib.pyplot as plt # Already imported globally
+>>>>>>> stage1_text_encoder
         plt.show = lambda: None
         print("Running in headless mode - display disabled")
 

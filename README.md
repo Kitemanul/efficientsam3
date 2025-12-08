@@ -4,9 +4,10 @@
 
 <sup>†</sup>Tech Lead & Corresponding Author
 
-[[Paper](https://arxiv.org/abs/2511.15833)] [[Project Page](https://simonzeng7108.github.io/efficientsam3/)] [[Hugging Face](https://huggingface.co/Simon7108528/EfficientSAM3)] [[Discord](https://discord.gg/Vd2gXNE8)]
+[📄 Paper](https://arxiv.org/abs/2511.15833) | [🌐 Project Page](https://simonzeng7108.github.io/efficientsam3/) | [🤗 Hugging Face](https://huggingface.co/Simon7108528/EfficientSAM3) | [💬 Discord](https://discord.gg/FMyaQca7xT)
 ---
 ## Updates
+- **[2025/12/08]** Stage 1 text encoder weights released for all 3 variants (MobileCLIP S0, S1, and MobileCLIP2 L) - distilled on 1% Recap-DataComp-1B dataset.
 - **[2025/12/02]** Stage 1 image encoder weights released for all 9 variants (RepViT, TinyViT, EfficientViT) - unsupervised distilled on 1% of SA-1B dataset.
 - **[2025/11/25]** Teaser model released. See Above. More models are baking in the oven🔥.
 - **[2025/10/18]** Project announced. Code and weights are not released yet; they will be published once SAM3 code is publicly available.
@@ -171,7 +172,33 @@ masks, scores, _ = model.predict_inst(
 )
 ```
 
-For detailed examples including point/box prompts, batched inference, and more, see [sam3/efficientsam3_examples/efficientsam3_for_sam1_task_example.py](sam3/efficientsam3_examples/efficientsam3_for_sam1_task_example.py).
+#### 🔥 Teaser Text Prompt Model
+<p align="center">
+  <img src="https://github.com/SimonZeng7108/efficientsam3/blob/main/images/es-tv-mc-m-teaser.png" width="30%">
+</p>
+
+ **MobileCLIP-S1 (63.56M)** distilled from **SAM3 Text Encoder (353.72M)** — trained on **1% Recap-DataComp-1B**.
+
+```python
+from sam3.model_builder import build_efficientsam3_image_model
+from sam3.model.sam3_image_processor import Sam3Processor
+
+# Load model with text encoder
+model = build_efficientsam3_image_model(
+    checkpoint_path="efficient_sam3_tinyvit_m_mobileclip_s1.pt",
+    backbone_type="tinyvit",
+    model_name="11m",
+    text_encoder_type="MobileCLIP-S1"
+)
+
+# Process image and predict with text prompt
+processor = Sam3Processor(model)
+inference_state = processor.set_image(image)
+inference_state = processor.set_text_prompt(inference_state, prompt="shoe")
+masks, scores, _ = model.predict_inst(inference_state)
+```
+
+For detailed examples including point/box prompts, batched inference, and more, see [sam3/efficientsam3_examples/efficientsam3_for_sam1_task_example.py](sam3/efficientsam3_examples/efficientsam3_for_sam1_task_example.py). For text prompt inference, see [sam3/efficientsam3_examples/efficientsam3_image_predictor_example.ipynb](sam3/efficientsam3_examples/efficientsam3_image_predictor_example.ipynb).
 
 ---
 
@@ -200,7 +227,7 @@ For dataset setup and download scripts (`data/download_*.sh`) covering COCO, DAV
 
 ## EfficientSAM3 Model Zoo & Weight Release
 
-### Image Encoder Models
+### SAM3 Text Encoder + EfficientSAM3 Image Encoder Models
 
 | Model Name | Backbone | Parameters | Stage 1 Weights<br/>(Encoder Distilled) | Stage 2 Weights<br/>(Memory Module Trained) | Stage 3 Weights<br/>(End-to-End Fine-Tuned) |
 |------------|----------|------------|----------------------------------------|---------------------------------------------|---------------------------------------------|
@@ -216,15 +243,26 @@ For dataset setup and download scripts (`data/download_*.sh`) covering COCO, DAV
 
 > **Note (2025/12/02):** The current Stage 1 image encoder weights are distilled on 1% of the SA-1B dataset.
 
-### Text Encoder Models
+### EfficientSAM3 Text Encoder + Image Encoder Models
 
 | Model Name | Backbone | Parameters | Stage 1 Weights<br/>(Encoder Distilled) | Stage 2 Weights<br/>(Memory Module Trained) | Stage 3 Weights<br/>(End-to-End Fine-Tuned) |
 |------------|----------|------------|----------------------------------------|---------------------------------------------|---------------------------------------------|
-| **ES-MC-S** | MobileCLIP-S0 | 42.57M | $$\text{Planned}$$ | $$\text{Planned}$$ | $$\text{Planned}$$ |
-| **ES-MC-M** | MobileCLIP-S1 | 63.56M | $$\text{Planned}$$ | $$\text{Planned}$$ | $$\text{Planned}$$ |
-| **ES-MC-L** | MobileCLIP2-L | 123.6M | $$\text{Planned}$$ | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-RV-S-MC-S1** | RepViT-M0.9 & MobileCLIP-S1 | 4.72M + 63.56M | [GDrive](https://drive.google.com/file/d/1SvBPDqeEYCKpOui79tCIl3c1nMnQijL-/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_repvit-m0_9_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-RV-M-MC-S1** | RepViT-M1.1 & MobileCLIP-S1 | 7.77M + 63.56M | [GDrive](https://drive.google.com/file/d/10VB-1IYAO3iqGq3U63xcM9uGyrqGGvAi/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_repvit-m1_1_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-RV-L-MC-S1** | RepViT-M2.3 & MobileCLIP-S1 | 22.40M + 63.56M | [GDrive](https://drive.google.com/file/d/1IxcVq1BBlMF2LNJ2uljQ8ajLpOWKFpUr/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_repvit-m2_3_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-TV-S-MC-S1** | TinyViT-5M & MobileCLIP-S1 | 5.07M + 63.56M | [GDrive](https://drive.google.com/file/d/1EtG6j3pGtaf-taxo5NLGCqZ8QvOgdLAn/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_tinyvit_5m_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-TV-M-MC-S1** | TinyViT-11M & MobileCLIP-S1 | 10.55M + 63.56M | [GDrive](https://drive.google.com/file/d/1dz5bl0RkCbEUjeK54azREbkEQA-hW_IG/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_tinyvit_11m_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-TV-L-MC-S1** | TinyViT-21M & MobileCLIP-S1 | 20.62M + 63.56M | [GDrive](https://drive.google.com/file/d/1DIeJmFle_tHAUKWbycxrNQAW0peZAuy4/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_tinyvit_21m_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-EV-S-MC-S1** | EfficientViT-B0 & MobileCLIP-S1 | 0.68M + 63.56M | [GDrive](https://drive.google.com/file/d/1pa4wKJysp2dUVkUMTrJ7Rs8ZVPIHntFL/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_efficientvit-b0_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-EV-M-MC-S1** | EfficientViT-B1 & MobileCLIP-S1 | 4.64M + 63.56M | [GDrive](https://drive.google.com/file/d/1Ds8AMZIw3DkWw4J3ml82Ke1RKBpFGT8T/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_efficientvit-b1_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-EV-L-MC-S1** | EfficientViT-B2 & MobileCLIP-S1 | 14.98M + 63.56M | [GDrive](https://drive.google.com/file/d/1d_dqJvaAm8rYYoYQIrpSpi9iWpDeDS2q/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_efficientvit-b2_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+> **Note (2025/12/08):** The current Stage 1 text encoder weights are distilled on 1% of the Recap-DataComp-1B dataset combined with all 9 image encoder variants. We notice a performance degradation, this is expected as the text encoder are not aligning with the light image encoders in stage1. We will release the stage1+ fine-tuned weights in the future.
 
-### Stage 1 Evaluation Results (COCO val2017)
+> **Note (2025/12/08):** We have also uploaded standalone text encoder weights trained on 1% Recap-DataComp-1B dataset: [MobileCLIP-S1](https://drive.google.com/file/d/1As_lkYTyxnu3nshEd3_3s50NT_m2XMul/view?usp=sharing) and [MobileCLIP2-L](https://drive.google.com/file/d/16C2-PB3-oU7uway3PdXtuVoSxvrLXjdw/view?usp=sharing). You can merge with stage 1 trained image encoder weights to get the full model.
+
+
+<details>
+<summary>Stage 1 Image Model Evaluation Results (COCO val2017)</summary>
 
 | Model Name | Backbone | Parameters | COCO mIoU | Test Time (s) |
 |------------|----------|------------|-----------|---------------|
@@ -239,6 +277,8 @@ For dataset setup and download scripts (`data/download_*.sh`) covering COCO, DAV
 | **ES-EV-L** | EfficientViT-B2 | 14.98M | 66.30% | 450.36 |
 
 > **Note:** The evaluation is done with a single NVIDIA 4070 Ti.
+
+</details>
 
 ---
 
@@ -257,7 +297,7 @@ Coming soon: an interactive web demo for real-time concept segmentation and trac
 ## Development To-Do List
 
 - [x] **Release Stage 1 Image Encoder Weights**: Distilled image encoder weights from SAM3 image encoder for all 9 variants (RepViT, TinyViT, EfficientViT)
-- [ ] **Release Stage 1 Text Encoder Weights**: Distill SAM3 text encoder weights to 3 variants of MobileCLIP text encoder
+- [x] **Release Stage 1 Text Encoder Weights**: Distill SAM3 text encoder weights to MobileCLIP-S1 combined with all 9 image encoder variants
 - [ ] **Release Stage 1+ Fine-Tuned Encoder Weights**: Prompt-in-the-loop supervised fine-tuning for improved encoder performance
 - [ ] **Release Stage 2 Memory Bank Aligned Model Weights**: Models with Perceiver-based memory compression trained on SA-V dataset
 - [ ] **Release Stage 3 Fine-Tuned Model Weights**: End-to-end fine-tuned models on SAM3 dataset with full PCS capabilities
@@ -289,6 +329,9 @@ If you use EfficientSAM3 in your research, please cite:
 @misc{zeng2025efficientsam3progressivehierarchicaldistillation,
   title={EfficientSAM3: Progressive Hierarchical Distillation for Video Concept Segmentation from SAM1, 2, and 3}, 
   author={Chengxi Zeng and Yuxuan Jiang and Gao Ge and Shuai Wang and Fan Aaron Zhang},
+@misc{zeng2025efficientsam3progressivehierarchicaldistillation,
+  title={EfficientSAM3: Progressive Hierarchical Distillation for Video Concept Segmentation from SAM1, 2, and 3}, 
+  author={Chengxi Zeng and Yuxuan Jiang and Gao Ge and Shuai Wang and Fan Aaron Zhang},
   year={2025},
   eprint={2511.15833},
   archivePrefix={arXiv},
@@ -301,6 +344,7 @@ If you use EfficientSAM3 in your research, please cite:
 
 This repository is licensed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).
 
+This project builds upon [SAM](https://github.com/facebookresearch/segment-anything), [SAM2](https://github.com/facebookresearch/sam2), [SAM3](https://github.com/facebookresearch/sam3), [EdgeSAM](https://github.com/chongzhou96/EdgeSAM), [EdgeTAM](https://github.com/facebookresearch/EdgeTAM), [EfficientTAM](https://github.com/yformer/EfficientTAM), [RepViT](https://github.com/THU-MIG/RepViT), [TinyViT](https://github.com/wkcn/TinyViT), [EfficientViT](https://github.com/mit-han-lab/efficientvit), and [MobileCLIP](https://github.com/apple/ml-mobileclip). Please refer to their respective licenses for usage terms.
 This project builds upon [SAM](https://github.com/facebookresearch/segment-anything), [SAM2](https://github.com/facebookresearch/sam2), [SAM3](https://github.com/facebookresearch/sam3), [EdgeSAM](https://github.com/chongzhou96/EdgeSAM), [EdgeTAM](https://github.com/facebookresearch/EdgeTAM), [EfficientTAM](https://github.com/yformer/EfficientTAM), [RepViT](https://github.com/THU-MIG/RepViT), [TinyViT](https://github.com/wkcn/TinyViT), [EfficientViT](https://github.com/mit-han-lab/efficientvit), and [MobileCLIP](https://github.com/apple/ml-mobileclip). Please refer to their respective licenses for usage terms.
 
 ## Acknowledgments

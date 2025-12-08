@@ -18,11 +18,11 @@ for arg in "$@"; do
 done
 set -- "${EXTRA_ARGS[@]}"
 
-CFG="${CFG:-stage1/configs/teacher/sam_vit_huge_sa1b.yaml}"
-DATA_PATH="${DATA_PATH:-data/sa-1b}"
-OUTPUT="${OUTPUT:-output/stage1_teacher}"
-GPUS="${GPUS:-8}"
-MASTER_PORT="${MASTER_PORT:-29501}"
+CFG="${CFG:-stage1/configs/es_mc_s.yaml}"
+DATA_PATH="${DATA_PATH:-data}"
+OUTPUT="${OUTPUT:-output/stage1_text_teacher}"
+GPUS="${GPUS:-1}"
+MASTER_PORT="${MASTER_PORT:-29502}"
 NNODES="${NNODES:-1}"
 NODE_RANK="${NODE_RANK:-0}"
 RDZV_BACKEND="${RDZV_BACKEND:-c10d}"
@@ -47,7 +47,6 @@ if [ -n "${BATCH_SIZE}" ]; then
 fi
 
 PYTHONPATH=. python -m torch.distributed.run "${TORCHRUN_ARGS[@]}" \
-  stage1/save_embedding_stage1.py \
+  stage1/save_embedding_text_stage1.py \
   "${PY_ARGS[@]}" \
   "$@"
-
