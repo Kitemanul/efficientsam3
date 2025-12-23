@@ -655,14 +655,31 @@ class Sam3TrackerBase(torch.nn.Module):
                 # "maskmem_features" might have been offloaded to CPU in demo use cases,
                 # so we load it back to GPU (it's a no-op if it's already on GPU).
                 feats = prev["maskmem_features"].cuda(non_blocking=True)
-                seq_len = feats.shape[-2] * feats.shape[-1]
-                to_cat_prompt.append(feats.flatten(2).permute(2, 0, 1))
+                # Support both dense spatial maps [B, C, H, W] and compressed tokens [B, N, C]
+                if feats.ndim == 4:
+                    seq_len = feats.shape[-2] * feats.shape[-1]
+                    feats_seq = feats.flatten(2).permute(2, 0, 1)  # [HW, B, C_mem]
+                elif feats.ndim == 3:
+                    seq_len = feats.shape[1]
+                    feats_seq = feats.permute(1, 0, 2)  # [N, B, C_mem]
+                else:
+                    raise ValueError(f"Unexpected maskmem_features shape: {feats.shape}")
+
+                to_cat_prompt.append(feats_seq)
                 to_cat_prompt_mask.append(
                     torch.zeros(B, seq_len, device=device, dtype=bool)
                 )
                 # Spatial positional encoding (it might have been offloaded to CPU in eval)
-                maskmem_enc = prev["maskmem_pos_enc"][-1].cuda()
-                maskmem_enc = maskmem_enc.flatten(2).permute(2, 0, 1)
+                maskmem_pos = prev["maskmem_pos_enc"]
+                if isinstance(maskmem_pos, (list, tuple)):
+                    maskmem_pos = maskmem_pos[-1]
+                maskmem_enc = maskmem_pos.cuda()
+                if maskmem_enc.ndim == 4:
+                    maskmem_enc = maskmem_enc.flatten(2).permute(2, 0, 1)
+                elif maskmem_enc.ndim == 3:
+                    maskmem_enc = maskmem_enc.permute(1, 0, 2)
+                else:
+                    raise ValueError(f"Unexpected maskmem_pos_enc shape: {maskmem_enc.shape}")
 
                 if (
                     is_selected_cond_frame
@@ -780,18 +797,40 @@ class Sam3TrackerBase(torch.nn.Module):
         prompt = torch.cat(to_cat_prompt, dim=0)
         prompt_mask = None  # For now, we always masks are zeros anyways
         prompt_pos_embed = torch.cat(to_cat_prompt_pos_embed, dim=0)
-        encoder_out = self.transformer.encoder(
-            src=current_vision_feats,
-            src_key_padding_mask=[None],
-            src_pos=current_vision_pos_embeds,
-            prompt=prompt,
-            prompt_pos=prompt_pos_embed,
-            prompt_key_padding_mask=prompt_mask,
-            feat_sizes=feat_sizes,
-            num_obj_ptr_tokens=num_obj_ptr_tokens,
-        )
-        # reshape the output (HW)BC => BCHW
-        pix_feat_with_mem = encoder_out["memory"].permute(1, 2, 0).view(B, C, H, W)
+        if getattr(self, "memory_attention", None) is not None:
+            # Stage 2 path: use EfficientMemoryAttention (256-d) + a learned projection for memory tokens (64-d -> 256-d)
+            if not hasattr(self, "mem_proj") or not hasattr(self, "mem_pos_proj"):
+                raise RuntimeError(
+                    "Efficient memory attention is enabled but `mem_proj` / `mem_pos_proj` are missing."
+                )
+
+            num_spatial_mem = prompt.shape[0] - num_obj_ptr_tokens
+            prompt_proj = self.mem_proj(prompt)
+            prompt_pos_proj = self.mem_pos_proj(prompt_pos_embed)
+
+            out = self.memory_attention(
+                curr=current_vision_feats[-1],
+                memory=prompt_proj,
+                curr_pos=current_vision_pos_embeds[-1],
+                memory_pos=prompt_pos_proj,
+                num_obj_ptr_tokens=num_obj_ptr_tokens,
+                num_spatial_mem=num_spatial_mem,
+                feat_size=(H, W),
+            )
+            pix_feat_with_mem = out.permute(1, 2, 0).view(B, C, H, W)
+        else:
+            encoder_out = self.transformer.encoder(
+                src=current_vision_feats,
+                src_key_padding_mask=[None],
+                src_pos=current_vision_pos_embeds,
+                prompt=prompt,
+                prompt_pos=prompt_pos_embed,
+                prompt_key_padding_mask=prompt_mask,
+                feat_sizes=feat_sizes,
+                num_obj_ptr_tokens=num_obj_ptr_tokens,
+            )
+            # reshape the output (HW)BC => BCHW
+            pix_feat_with_mem = encoder_out["memory"].permute(1, 2, 0).view(B, C, H, W)
         return pix_feat_with_mem
 
     def _encode_new_memory(
@@ -846,6 +885,16 @@ class Sam3TrackerBase(torch.nn.Module):
         maskmem_features += (
             1 - is_obj_appearing[..., None, None]
         ) * self.no_obj_embed_spatial[..., None, None].expand(*maskmem_features.shape)
+
+        # Stage 2 option: compress spatial memory tokens with a Perceiver (EdgeTAM-style)
+        if getattr(self, "spatial_perceiver", None) is not None:
+            # `maskmem_pos_enc` is a list; use the last (top-level) pos enc map.
+            pos_map = maskmem_pos_enc[-1]
+            compressed, compressed_pos = self.spatial_perceiver(maskmem_features, pos_map)
+            if compressed_pos is None:
+                compressed_pos = torch.zeros_like(compressed)
+            maskmem_features = compressed  # [B, N, C_mem]
+            maskmem_pos_enc = [compressed_pos]  # keep list structure for compatibility
 
         return maskmem_features, maskmem_pos_enc
 

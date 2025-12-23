@@ -29,12 +29,14 @@ from sam3.model.model_misc import (
     TransformerWrapper,
 )
 from sam3.model.necks import Sam3DualViTDetNeck
+from sam3.model.perceiver import EfficientSpatialPerceiver
 from sam3.model.position_encoding import PositionEmbeddingSine
 from sam3.model.sam1_task_predictor import SAM3InteractiveImagePredictor
 from sam3.model.sam3_image import Sam3Image, Sam3ImageOnVideoMultiGPU
 from sam3.model.sam3_tracking_predictor import Sam3TrackerPredictor
 from sam3.model.sam3_video_inference import Sam3VideoInferenceWithInstanceInteractivity
 from sam3.model.sam3_video_predictor import Sam3VideoPredictorMultiGPU
+from sam3.model.efficient_memory_attention import EfficientMemoryAttention
 from sam3.model.text_encoder_ve import VETextEncoder
 from sam3.model.text_encoder_student import TextStudentEncoder
 from sam3.model.tokenizer_ve import SimpleTokenizer
@@ -430,7 +432,10 @@ def _create_tracker_transformer():
 
 
 def build_tracker(
-    apply_temporal_disambiguation: bool, with_backbone: bool = False, compile_mode=None
+    apply_temporal_disambiguation: bool,
+    with_backbone: bool = False,
+    compile_mode=None,
+    efficient_memory: bool = False,
 ) -> Sam3TrackerPredictor:
     """
     Build the SAM3 Tracker module for video tracking.
@@ -480,6 +485,43 @@ def build_tracker(
         fill_hole_area=0,
         use_memory_selection=apply_temporal_disambiguation,
     )
+
+    if efficient_memory:
+        # Stage 2: attach efficient memory modules.
+        #
+        # These are optional and only used when the tracker code detects them
+        # (see `Sam3TrackerBase._prepare_memory_conditioned_features` and `_encode_new_memory`).
+        mem_dim = model.mem_dim
+        hidden_dim = model.hidden_dim
+
+        # Pos enc used by the Perceiver's 2D latents
+        perceiver_pos_enc = PositionEmbeddingSine(
+            num_pos_feats=mem_dim, normalize=True, scale=None, temperature=10000
+        )
+
+        model.spatial_perceiver = EfficientSpatialPerceiver(
+            dim=mem_dim,
+            num_latents=256,
+            num_latents_2d=256,
+            depth=2,
+            heads=8,
+            dim_head=64,
+            use_self_attn=True,
+            position_encoding=perceiver_pos_enc,
+        )
+
+        model.memory_attention = EfficientMemoryAttention(
+            d_model=hidden_dim,
+            dim_feedforward=2048,
+            num_heads=8,
+            num_layers=2,
+            dropout=0.0,
+            pool_size=2,
+        )
+
+        # Project memory tokens (mem_dim) into attention space (hidden_dim)
+        model.mem_proj = nn.Linear(mem_dim, hidden_dim)
+        model.mem_pos_proj = nn.Linear(mem_dim, hidden_dim)
 
     return model
 
@@ -992,6 +1034,7 @@ def build_sam3_video_model(
     geo_encoder_use_img_cross_attn: bool = True,
     strict_state_dict_loading: bool = True,
     apply_temporal_disambiguation: bool = True,
+    efficient_memory: bool = False,
     device="cuda" if torch.cuda.is_available() else "cpu",
     compile=False,
 ) -> Sam3VideoInferenceWithInstanceInteractivity:
@@ -1011,7 +1054,10 @@ def build_sam3_video_model(
         )
 
     # Build Tracker module
-    tracker = build_tracker(apply_temporal_disambiguation=apply_temporal_disambiguation)
+    tracker = build_tracker(
+        apply_temporal_disambiguation=apply_temporal_disambiguation,
+        efficient_memory=efficient_memory,
+    )
 
     # Build Detector components
     visual_neck = _create_vision_backbone()

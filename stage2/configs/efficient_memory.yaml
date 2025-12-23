@@ -1,0 +1,79 @@
+# --------------------------------------------------------
+# EfficientSAM3 Stage 2 - Efficient Memory Configuration
+# --------------------------------------------------------
+# This config trains efficient memory modules (Perceiver + Memory Attention)
+# using distillation from SAM3 teacher.
+
+# Data settings
+DATA:
+  SAV_ROOT: "data/sa-v/extracted_frames"
+  USE_PRECOMPUTED: true
+  EMBEDDING_DIR: "output/stage2_embeddings"
+  NUM_FRAMES: 8
+  FRAME_SKIP: 4
+  BATCH_SIZE: 4
+  NUM_WORKERS: 8
+  PIN_MEMORY: true
+  TRAIN_SPLIT: 0.95
+  VAL_SPLIT: 0.05
+
+# Model settings
+MODEL:
+  RESUME: ""  # Path to SAM3 checkpoint for teacher
+  
+  TRACKER:
+    IMAGE_SIZE: 1008
+    BACKBONE_STRIDE: 14
+    NUM_MASKMEM: 7
+  
+  MEMORY_ENCODER:
+    OUT_DIM: 64
+  
+  PERCEIVER:
+    ENABLED: true
+    NUM_LATENTS: 256
+    NUM_LATENTS_2D: 256
+    DEPTH: 2
+    HEADS: 8
+    DIM_HEAD: 64
+    USE_SELF_ATTN: true
+  
+  MEMORY_ATTENTION:
+    D_MODEL: 256
+    DIM_FEEDFORWARD: 2048
+    NUM_HEADS: 8
+    NUM_LAYERS: 2
+    DROPOUT: 0.0
+    POOL_SIZE: 2
+
+# Distillation loss settings
+DISTILL:
+  FOCAL_WEIGHT: 20.0
+  DICE_WEIGHT: 1.0
+  IOU_WEIGHT: 1.0
+  MSE_WEIGHT: 1.0
+  FOCAL_ALPHA: 0.25
+  FOCAL_GAMMA: 2.0
+
+# Training settings
+TRAIN:
+  LR: 0.0003
+  MIN_LR: 0.00001
+  WEIGHT_DECAY: 0.1
+  MAX_STEPS: 130000
+  WARMUP_STEPS: 15000
+  GRAD_CLIP: 0.1
+  AMP: true
+  LOG_INTERVAL: 100
+  VAL_INTERVAL: 5000
+  SAVE_INTERVAL: 10000
+
+# Augmentation settings
+AUG:
+  RANDOM_FLIP: true
+  COLOR_JITTER: 0.4
+
+# Evaluation settings
+EVAL:
+  ENABLED: false
+  EVAL_INTERVAL: 10000

@@ -1172,9 +1172,15 @@ class Sam3TrackerPredictor(Sam3TrackerBase):
                 maskmem_pos_enc = model_constants["maskmem_pos_enc"]
             # expand the cached maskmem_pos_enc to the actual batch size
             batch_size = out_maskmem_pos_enc[0].size(0)
-            expanded_maskmem_pos_enc = [
-                x.expand(batch_size, -1, -1, -1) for x in maskmem_pos_enc
-            ]
+            # After EdgeTAM-style Perceiver compression, pos enc can be (B, N, C) instead of (B, C, H, W).
+            if out_maskmem_pos_enc[0].ndim == 3:
+                expanded_maskmem_pos_enc = [
+                    x.expand(batch_size, -1, -1) for x in maskmem_pos_enc
+                ]
+            else:
+                expanded_maskmem_pos_enc = [
+                    x.expand(batch_size, -1, -1, -1) for x in maskmem_pos_enc
+                ]
         else:
             expanded_maskmem_pos_enc = None
         return expanded_maskmem_pos_enc
