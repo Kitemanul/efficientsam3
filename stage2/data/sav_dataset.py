@@ -272,17 +272,21 @@ class SAVVideoDataset(Dataset):
             frames.append(frame)
         frames = torch.stack(frames, dim=0)  # [T, C, H, W]
         
-        # Get masks (for first frame - used as initial prompt)
+        # Get masks for all frames (for teacher forcing)
         mask_size = self.img_size // 4  # Low-res mask size
-        first_frame_masks = self._get_mask_for_frame(
-            video_name, frame_indices[0], mask_size, mask_size
-        )
+        all_masks = []
+        for frame_idx in frame_indices:
+            mask = self._get_mask_for_frame(
+                video_name, frame_idx, mask_size, mask_size
+            )
+            all_masks.append(mask)
+        all_masks = torch.stack(all_masks, dim=0)  # [T, num_objects, H, W]
         
         # Generate point prompts from first frame masks
         point_coords = []
         point_labels = []
         for obj_idx in range(self.max_objects):
-            coords, labels = self._generate_point_prompt(first_frame_masks[obj_idx])
+            coords, labels = self._generate_point_prompt(all_masks[0, obj_idx])
             point_coords.append(coords)
             point_labels.append(labels)
         point_coords = torch.stack(point_coords, dim=0)  # [num_objects, 1, 2]
@@ -295,7 +299,7 @@ class SAVVideoDataset(Dataset):
         
         return {
             'frames': frames,  # [T, C, H, W]
-            'masks': first_frame_masks,  # [num_objects, H, W]
+            'masks': all_masks,  # [T, num_objects, H, W]
             'point_coords': point_coords,  # [num_objects, 1, 2]
             'point_labels': point_labels,  # [num_objects, 1]
             'video_name': video_name,

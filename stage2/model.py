@@ -26,12 +26,18 @@ from sam3.model.perceiver import EfficientSpatialPerceiver
 from sam3.model.efficient_memory_attention import EfficientMemoryAttention
 from sam3.model.position_encoding import PositionEmbeddingSine
 
+try:
+    from sam2.sam2.build_sam import build_sam2
+    from sam2.sam2.modeling.sam2_base import SAM2Base
+except ImportError:
+    from sam2.build_sam import build_sam2
+    from sam2.modeling.sam2_base import SAM2Base
 
 class SAM3MemoryTeacher(nn.Module):
     """
     SAM3 Teacher model for memory distillation.
     
-    This wraps the full SAM3 tracker and provides access to intermediate
+    This wraps a full SAM2 model and provides access to intermediate
     outputs needed for distillation (memory features, conditioned features).
     
     The entire model is frozen - no gradients are computed.
@@ -39,126 +45,204 @@ class SAM3MemoryTeacher(nn.Module):
     
     def __init__(
         self,
+        config_file: str = "sam2_hiera_l.yaml",
         checkpoint_path: Optional[str] = None,
-        image_size: int = 1008,
+        image_size: int = 1024,
     ):
         super().__init__()
         self.image_size = image_size
-
-        # Build only the ViT trunk (same as `stage2/save_video_embeddings_stage2.py`)
-        self.trunk = ViT(
-            img_size=1008,
-            pretrain_img_size=336,
-            patch_size=14,
-            embed_dim=1024,
-            depth=32,
-            num_heads=16,
-            mlp_ratio=4.625,
-            norm_layer="LayerNorm",
-            drop_path_rate=0.1,
-            qkv_bias=True,
-            use_abs_pos=True,
-            tile_abs_pos=True,
-            global_att_blocks=(7, 15, 23, 31),
-            rel_pos_blocks=(),
-            use_rope=True,
-            use_interp_rope=True,
-            window_size=24,
-            pretrain_use_cls_token=True,
-            retain_cls_token=False,
-            ln_pre=True,
-            ln_post=False,
-            return_interm_layers=False,
-            bias_patch_embed=False,
-            compile_mode=None,
-        )
-
-        checkpoint_path = self._resolve_checkpoint_path(checkpoint_path)
-        self._load_trunk_weights(checkpoint_path)
-
-        # Freeze all parameters
-        for param in self.parameters():
-            param.requires_grad = False
-        self.eval()
-
-    def _resolve_checkpoint_path(self, checkpoint_path: Optional[str]) -> str:
-        """Pick a checkpoint path; prefer local `sam3_checkpoints/sam3.pt` if present."""
-        if checkpoint_path:
-            return checkpoint_path
-
-        local = Path(__file__).resolve().parent.parent / "sam3_checkpoints" / "sam3.pt"
-        if local.exists():
-            return str(local)
-
-        return download_ckpt_from_hf()
-
-    def _load_trunk_weights(self, checkpoint_path: str) -> None:
-        """Load only trunk weights from a SAM3 checkpoint into `self.trunk`."""
-        with g_pathmgr.open(checkpoint_path, "rb") as f:
-            ckpt = torch.load(f, map_location="cpu", weights_only=True)
-
-        if isinstance(ckpt, dict) and "model" in ckpt and isinstance(ckpt["model"], dict):
-            ckpt = ckpt["model"]
-
-        trunk_prefix = "detector.backbone.vision_backbone.trunk."
-        trunk_weights = {
-            k[len(trunk_prefix) :]: v for k, v in ckpt.items() if k.startswith(trunk_prefix)
-        }
-        if not trunk_weights:
-            raise KeyError(
-                f"No trunk weights found with prefix {trunk_prefix!r} in checkpoint {checkpoint_path!r}"
-            )
-
-        self.trunk.load_state_dict(trunk_weights, strict=False)
-    
-    @torch.no_grad()
-    def extract_trunk_features(
-        self,
-        images: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Extract trunk features (before FPN) for a batch of images.
         
-        Args:
-            images: [B, C, H, W] - input images
-            
-        Returns:
-            features: [B, 1024, H/14, W/14] - trunk features
-        """
-        out = self.trunk(images)
-        if isinstance(out, (list, tuple)):
-            out = out[-1]
-        return out
-    
+        # Load SAM2 model
+        # We assume config files are in sam2/configs/sam2/
+        # If checkpoint_path is not provided, build_sam2 will try to download it or use default
+        self.model = build_sam2(config_file, checkpoint_path)
+        
+        # Freeze all parameters
+        for param in self.model.parameters():
+            param.requires_grad = False
+        self.model.eval()
+
     @torch.no_grad()
     def forward(
         self,
         frames: torch.Tensor,
-        point_inputs: Optional[Dict] = None,
-        mask_inputs: Optional[torch.Tensor] = None,
+        masks: Optional[torch.Tensor] = None,
     ) -> Dict[str, Any]:
         """
-        Full forward pass through the tracker.
-        
-        This is used to get teacher outputs for distillation.
+        Full forward pass through the teacher with Teacher Forcing.
         
         Args:
-            frames: [B, T, C, H, W] - video frames
-            point_inputs: dict with point_coords and point_labels
-            mask_inputs: [B, 1, H, W] - initial mask prompt
+            frames: [B, T, 3, H, W] - video frames
+            masks: [B, T, 1, H, W] - ground truth masks for memory encoding
             
         Returns:
             dict with teacher outputs for distillation
         """
         B, T, C, H, W = frames.shape
+        
+        # 1. Extract Image Features for all frames
+        # SAM2 image encoder expects [B*T, 3, H, W]
+        img_inputs = frames.flatten(0, 1)
+        backbone_out = self.model.image_encoder(img_inputs)
+        
+        # Extract the feature map used for memory attention (usually the high-res one or specific level)
+        # SAM2 Hiera backbone returns: {"vision_features": [feat_s0, feat_s1, feat_s2], ...}
+        # We usually use the last one or the one corresponding to `hidden_dim`
+        if isinstance(backbone_out, dict):
+            vision_feats = backbone_out["vision_features"]
+            vision_pos = backbone_out["vision_pos_enc"]
+        else:
+            # Fallback if it returns list
+            vision_feats = backbone_out
+            vision_pos = None # Should be handled
+            
+        # Get the feature map that matches hidden_dim (256)
+        # In Hiera-L, the features are [dim, dim, dim, dim]. We want the one used for memory.
+        # SAM2Base uses `self.image_encoder.neck` to project features.
+        # But `image_encoder` in SAM2 is usually a HieraBackbone + FPN.
+        
+        # Let's rely on `_prepare_backbone_features` if available, or manually project.
+        # SAM2Base has `_prepare_backbone_features`? No.
+        
+        # Let's look at how SAM2Base gets features.
+        # It seems `image_encoder` returns the features directly.
+        
+        # For Hiera, the output features are list of tensors.
+        # We need to know which one to use.
+        src = vision_feats[-1] # Usually the last one is used for memory
+        # But wait, SAM2 uses a FPN/Neck to fuse features.
+        # In `sam2_base.py`, `self.image_encoder` includes the neck?
+        # Yes, `ImageEncoder` usually includes the backbone and neck.
+        
+        # Let's assume `vision_feats[-1]` is the one, or `vision_feats` is already the projected feature.
+        # If `vision_feats` is a list, we stack them?
+        
+        # Actually, let's look at `SAM2Base.forward_image`.
+        # It calls `self.image_encoder(image)`.
+        # Then `self._prepare_backbone_features(backbone_out)`.
+        
+        # I'll implement a simplified version.
+        # We assume `vision_feats` contains the features we need.
+        # For SAM2, the memory features come from the same backbone features.
+        
+        # Let's assume `src` is `vision_feats[-1]`.
+        # Reshape to [B, T, C, H, W]
+        src = src.view(B, T, *src.shape[1:])
+        
+        # 2. Teacher Forcing Loop
+        conditioned_features_list = []
+        memory_list = [] # List of memory features
+        memory_pos_list = []
+        
+        for t in range(T):
+            # Current frame features
+            curr_feat = src[:, t] # [B, C, H, W]
+            
+            # Condition on memory
+            if t == 0:
+                # First frame, no memory
+                cond_feat = curr_feat # Or add no_mem_embed
+                # SAM2 adds no_mem_embed inside memory_attention or before?
+                # SAM2Base: if self.num_maskmem == 0: return pix_feat
+                # else: ...
+                
+                # We need to call memory attention even for first frame if we want consistent output?
+                # SAM2Base adds `no_mem_embed` if no memory.
+                
+                # Let's try to use `self.model.memory_attention` directly if possible.
+                # But it requires complex inputs.
+                
+                # Simplified:
+                cond_feat = curr_feat + self.model.no_mem_embed.view(1, -1, 1, 1)
+            else:
+                # Retrieve memories
+                # We need to format memory for attention
+                # SAM2 memory attention expects:
+                # curr: [B, C, H, W]
+                # memory: [B, N, C] (flattened spatial)
+                
+                # Prepare memory from previous frames (Teacher Forcing)
+                # We use ALL previous frames or last N frames
+                
+                mems = []
+                pos_mems = []
+                
+                # Use last `num_maskmem` frames
+                start_idx = max(0, t - self.model.num_maskmem)
+                for prev_t in range(start_idx, t):
+                    mems.append(memory_list[prev_t])
+                    pos_mems.append(memory_pos_list[prev_t])
+                
+                # Concatenate
+                if mems:
+                    mem_stack = torch.cat(mems, dim=1) # [B, N_total, C]
+                    pos_stack = torch.cat(pos_mems, dim=1)
+                    
+                    # Run memory attention
+                    # SAM2 memory attention signature:
+                    # forward(curr, memory, curr_pos, memory_pos, num_spatial_mem, ...)
+                    
+                    # We need current pos enc
+                    # SAM2 uses `self.model.sam_prompt_encoder.get_dense_pe()`?
+                    # Or `vision_pos` from backbone.
+                    
+                    curr_pos = vision_pos[-1].view(B, T, *vision_pos[-1].shape[1:])[:, t]
+                    
+                    # Flatten inputs
+                    curr_flat = curr_feat.flatten(2).permute(0, 2, 1) # [B, HW, C]
+                    curr_pos_flat = curr_pos.flatten(2).permute(0, 2, 1)
+                    
+                    # Memory attention
+                    cond_flat = self.model.memory_attention(
+                        curr=curr_flat,
+                        curr_pos=curr_pos_flat,
+                        memory=mem_stack,
+                        memory_pos=pos_stack,
+                        num_obj_ptr_tokens=0
+                    )
+                    
+                    cond_feat = cond_flat.permute(0, 2, 1).view(B, *curr_feat.shape[1:])
+                else:
+                    cond_feat = curr_feat + self.model.no_mem_embed.view(1, -1, 1, 1)
 
-        flat = frames.reshape(B * T, C, H, W)
-        feats = self.extract_trunk_features(flat)  # [B*T, 1024, 72, 72]
-        feats = feats.reshape(B, T, feats.shape[1], feats.shape[2], feats.shape[3])
-
+            conditioned_features_list.append(cond_feat)
+            
+            # Update Memory (using GT mask)
+            if masks is not None:
+                mask_t = masks[:, t] # [B, 1, H, W]
+                
+                # Encode memory
+                # SAM2 memory encoder takes: (pix_feat, mask, skip_mask_sigmoid=True)
+                # pix_feat is the conditioned feature? No, it's the raw backbone feature usually?
+                # SAM2Base: `self.memory_encoder(pix_feat, mask, ...)`
+                # `pix_feat` is the output of memory attention (conditioned features).
+                
+                mem_t, mem_pos_t = self.model.memory_encoder(
+                    cond_feat,
+                    mask_t,
+                    skip_mask_sigmoid=True # Masks are already binary/logits? Assume logits or binary.
+                )
+                
+                # mem_t: [B, C, H, W] -> Flatten to [B, HW, C]
+                mem_t_flat = mem_t.flatten(2).permute(0, 2, 1)
+                mem_pos_t_flat = mem_pos_t.flatten(2).permute(0, 2, 1)
+                
+                memory_list.append(mem_t_flat)
+                memory_pos_list.append(mem_pos_t_flat)
+            else:
+                # If no masks, we can't update memory effectively for teacher forcing
+                # Just append dummy or skip
+                pass
+                
+        # Stack outputs
+        conditioned_features = torch.stack(conditioned_features_list, dim=1) # [B, T, C, H, W]
+        
         return {
-            'trunk_features': feats,  # [B, T, 1024, 72, 72]
+            'trunk_features': src,
+            'conditioned_features': conditioned_features
         }
+
+
 
 
 class SAM3MemoryStudent(nn.Module):

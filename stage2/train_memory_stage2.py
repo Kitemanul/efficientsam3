@@ -449,14 +449,28 @@ class Trainer:
         
         # Either use precomputed trunk embeddings or compute them from raw frames
         if 'embeddings' in batch:
+            # Precomputed embeddings (cannot use Teacher Forcing with masks unless masks are also precomputed)
+            # Fallback to original behavior (distilling trunk features only - suboptimal)
             teacher_features = batch['embeddings'].to(self.device)  # [B, T, 1024, 72, 72]
+            teacher_conditioned = None
         else:
             frames = batch['frames'].to(self.device)  # [B, T, 3, 1008, 1008]
+            masks = batch.get('masks')
+            
+            if masks is not None:
+                masks = masks.to(self.device)
+                # Handle multiple objects: select first one for now
+                # masks: [B, T, N_obj, H, W] -> [B, T, 1, H, W]
+                if masks.dim() == 5:
+                    masks = masks[:, :, 0:1]
+            
             if self.teacher is None:
                 raise RuntimeError("Teacher model is required when training without precomputed embeddings.")
+            
             with torch.no_grad():
-                teacher_out = self.teacher(frames)
+                teacher_out = self.teacher(frames, masks)
                 teacher_features = teacher_out['trunk_features']  # [B, T, 1024, 72, 72]
+                teacher_conditioned = teacher_out.get('conditioned_features') # [B, T, C, H, W]
 
         B, T, C, H, W = teacher_features.shape
         
@@ -497,10 +511,12 @@ class Trainer:
             # Compute loss (simplified - just MSE on conditioned features)
             if t > 0:  # Skip first frame (no memory conditioning)
                 with autocast(enabled=self.config.TRAIN.AMP):
-                    # Use MSE on conditioned features as proxy loss
+                    # Target: Teacher's conditioned features if available, else query_feat (fallback)
+                    target = teacher_conditioned[:, t] if teacher_conditioned is not None else query_feat
+                    
                     loss = F.mse_loss(
                         student_out['conditioned_features'],
-                        query_feat,  # Ideally compare to teacher conditioned features
+                        target,
                     )
                 all_losses.append(loss)
         
@@ -508,7 +524,7 @@ class Trainer:
         if len(all_losses) > 0:
             total_loss = torch.stack(all_losses).mean()
         else:
-            total_loss = torch.tensor(0.0, device=self.device)
+            total_loss = torch.tensor(0.0, device=self.device, requires_grad=True)
         
         # Backward
         self.optimizer.zero_grad()
