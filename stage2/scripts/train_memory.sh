@@ -1,89 +1,68 @@
-#!/bin/bash
-# --------------------------------------------------------
-# Train Stage 2 Memory Modules
-# --------------------------------------------------------
-# Train Perceiver Resampler + Efficient Memory Attention.
+#!/usr/bin/env bash
 #
+# Stage 2 Training Script
 # Usage:
 #   bash stage2/scripts/train_memory.sh \
-#     CFG=stage2/configs/efficient_memory.yaml \
-#     OUTPUT=output/stage2_memory
+#     SAM3_CKPT=sam3_checkpoints/sam3.pt \
+#     DATA_PATH=data/sa-v/extracted_frames \
+#     OUTPUT=output/stage2_checkpoints \
+#     BATCH_SIZE=4 \
+#     GPUS=8
 
-set -e
+set -euo pipefail
 
-# Default values
-CFG="${CFG:-stage2/configs/efficient_memory.yaml}"
-OUTPUT="${OUTPUT:-output/stage2_memory}"
-GPUS="${GPUS:-1}"
-MASTER_PORT="${MASTER_PORT:-29500}"
-RESUME="${RESUME:-}"
-
-# Parse command line arguments (KEY=VALUE format)
-EXTRA_OPTS=""
+# Allow KEY=VALUE overrides passed after the script name.
+EXTRA_ARGS=()
 for arg in "$@"; do
-  case $arg in
-    CFG=*)
-      CFG="${arg#*=}"
-      ;;
-    OUTPUT=*)
-      OUTPUT="${arg#*=}"
-      ;;
-    GPUS=*)
-      GPUS="${arg#*=}"
-      ;;
-    MASTER_PORT=*)
-      MASTER_PORT="${arg#*=}"
-      ;;
-    RESUME=*)
-      RESUME="${arg#*=}"
-      ;;
-    --opts)
-      # Everything after --opts goes to extra options
-      shift
-      EXTRA_OPTS="$@"
-      break
+  case "$arg" in
+    SAM3_CKPT=*|DATA_PATH=*|OUTPUT=*|BATCH_SIZE=*|EPOCHS=*|LR=*|GPUS=*|MASTER_PORT=*|NNODES=*|NODE_RANK=*|RDZV_BACKEND=*|RDZV_ENDPOINT=*)
+      key=${arg%%=*}
+      value=${arg#*=}
+      printf -v "$key" '%s' "$value"
       ;;
     *)
-      # Pass through as config option
-      EXTRA_OPTS="$EXTRA_OPTS $arg"
+      EXTRA_ARGS+=("$arg")
       ;;
   esac
 done
+set -- "${EXTRA_ARGS[@]}"
 
-echo "=============================================="
-echo "Stage 2: Train Memory Modules"
-echo "=============================================="
-echo "Config: $CFG"
-echo "Output: $OUTPUT"
-echo "GPUs: $GPUS"
-echo "=============================================="
+# Default values
+SAM3_CKPT="${SAM3_CKPT:-sam3_checkpoints/sam3.pt}"
+DATA_PATH="${DATA_PATH:-data/sa-v/extracted_frames}"
+OUTPUT="${OUTPUT:-output/stage2_checkpoints}"
+BATCH_SIZE="${BATCH_SIZE:-4}"
+EPOCHS="${EPOCHS:-5}"
+LR="${LR:-1e-4}"
+GPUS="${GPUS:-1}"
+MASTER_PORT="${MASTER_PORT:-29500}"
+NNODES="${NNODES:-1}"
+NODE_RANK="${NODE_RANK:-0}"
+RDZV_BACKEND="${RDZV_BACKEND:-c10d}"
+RDZV_ENDPOINT="${RDZV_ENDPOINT:-localhost:${MASTER_PORT}}"
 
-# Build command
-if [ "$GPUS" -gt 1 ]; then
-  # Multi-GPU with torchrun
-  CMD="torchrun --nproc_per_node=$GPUS --master_port=$MASTER_PORT \
-    stage2/train_memory_stage2.py \
-    --config $CFG \
-    --output_dir $OUTPUT"
+# Construct torchrun arguments
+TORCHRUN_ARGS=(--nproc_per_node "${GPUS}")
+if [ "${NNODES}" -gt 1 ]; then
+  TORCHRUN_ARGS+=(--nnodes "${NNODES}" --node_rank "${NODE_RANK}" --rdzv_backend "${RDZV_BACKEND}" --rdzv_endpoint "${RDZV_ENDPOINT}")
 else
-  # Single GPU
-  CMD="python stage2/train_memory_stage2.py \
-    --config $CFG \
-    --output_dir $OUTPUT"
+  TORCHRUN_ARGS+=(--nnodes 1 --master_port "${MASTER_PORT}")
 fi
 
-# Add resume if specified
-if [ -n "$RESUME" ]; then
-  CMD="$CMD --resume $RESUME"
-fi
+# Construct python script arguments
+PY_ARGS=(
+  --sam3_checkpoint "${SAM3_CKPT}"
+  --data_path "${DATA_PATH}"
+  --output_dir "${OUTPUT}"
+  --batch_size "${BATCH_SIZE}"
+  --epochs "${EPOCHS}"
+  --lr "${LR}"
+)
 
-# Add extra options
-if [ -n "$EXTRA_OPTS" ]; then
-  CMD="$CMD $EXTRA_OPTS"
-fi
+echo "Launching training with ${GPUS} GPUs..."
+echo "Output dir: ${OUTPUT}"
 
-# Run
-echo "Running: $CMD"
-eval $CMD
-
-echo "Done!"
+PYTHONPATH=. torchrun "${TORCHRUN_ARGS[@]}" \
+  stage2/train_memory_stage2.py \
+  "${PY_ARGS[@]}" \
+  "$@"

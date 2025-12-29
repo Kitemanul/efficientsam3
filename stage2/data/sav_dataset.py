@@ -31,6 +31,7 @@ import torchvision.transforms as transforms
 from torchvision.io import read_image
 from PIL import Image
 import numpy as np
+from pycocotools import mask as mask_utils
 
 
 class SAVVideoDataset(Dataset):
@@ -209,15 +210,23 @@ class SAVVideoDataset(Dataset):
 
     def _decode_rle(
         self,
-        rle: Dict,
+        rle: Any,
         height: int,
         width: int,
     ) -> torch.Tensor:
         """Decode RLE mask to binary mask."""
-        # Simplified RLE decoding - actual implementation depends on SA-V format
-        # For now, return dummy mask for initial testing
-        mask = torch.zeros(height, width)
-        return mask
+        # SA-V RLE is typically COCO format
+        if isinstance(rle, str):
+            # Compressed RLE string
+            rle_obj = {'counts': rle.encode('utf-8'), 'size': [height, width]}
+        elif isinstance(rle, dict):
+            rle_obj = rle
+        else:
+            # Assume it's uncompressed counts or similar
+            rle_obj = {'counts': rle, 'size': [height, width]}
+            
+        mask = mask_utils.decode(rle_obj)
+        return torch.from_numpy(mask).float()
 
     def _generate_point_prompt(
         self,

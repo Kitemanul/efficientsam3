@@ -13,7 +13,11 @@ def process_video(args):
         video_path = Path(video_path)
         video_name = video_path.stem
         
-        # Create output directory for this video
+        # Create output directories
+        # Stage 2 (SAVVideoDataset) expects:
+        # - video_name/%05d.jpg
+        # - video_name/video_name_manual.json
+        
         video_out_dir = output_root / video_name
         video_out_dir.mkdir(parents=True, exist_ok=True)
         
@@ -43,7 +47,7 @@ def process_video(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Reorganize SA-V dataset: Extract frames and copy annotations.")
-    parser.add_argument("--source_dir", type=str, default="data/sa-v", help="Root directory of SA-V raw data")
+    parser.add_argument("--source_dir", type=str, default="data/sa-v/sav_train", help="Root directory of SA-V raw data")
     parser.add_argument("--output_dir", type=str, default="data/sa-v/extracted_frames", help="Output directory")
     parser.add_argument("--workers", type=int, default=None, help="Number of worker processes")
     
