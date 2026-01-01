@@ -441,6 +441,9 @@ class EfficientMemoryAttention(nn.Module):
         self.num_layers = num_layers
         self.pos_enc_at_input = pos_enc_at_input
         
+        # For compatibility with Sam3TrackerBase which checks `transformer.decoder is None`
+        self.decoder = None
+        
         # Build layers
         self.layers = nn.ModuleList([
             EfficientMemoryAttentionLayer(

@@ -15,7 +15,7 @@ set -euo pipefail
 EXTRA_ARGS=()
 for arg in "$@"; do
   case "$arg" in
-    SAM3_CKPT=*|DATA_PATH=*|OUTPUT=*|BATCH_SIZE=*|EPOCHS=*|LR=*|GPUS=*|MASTER_PORT=*|NNODES=*|NODE_RANK=*|RDZV_BACKEND=*|RDZV_ENDPOINT=*)
+    SAM3_CKPT=*|DATA_PATH=*|OUTPUT=*|BATCH_SIZE=*|EPOCHS=*|LR=*|GPUS=*|MASTER_PORT=*|NNODES=*|NODE_RANK=*|RDZV_BACKEND=*|RDZV_ENDPOINT=*|SUBSET_FRACTION=*|SAVE_EVERY=*)
       key=${arg%%=*}
       value=${arg#*=}
       printf -v "$key" '%s' "$value"
@@ -40,6 +40,8 @@ NNODES="${NNODES:-1}"
 NODE_RANK="${NODE_RANK:-0}"
 RDZV_BACKEND="${RDZV_BACKEND:-c10d}"
 RDZV_ENDPOINT="${RDZV_ENDPOINT:-localhost:${MASTER_PORT}}"
+SUBSET_FRACTION="${SUBSET_FRACTION:-1.0}"
+SAVE_EVERY="${SAVE_EVERY:-1}"
 
 # Construct torchrun arguments
 TORCHRUN_ARGS=(--nproc_per_node "${GPUS}")
@@ -57,6 +59,8 @@ PY_ARGS=(
   --batch_size "${BATCH_SIZE}"
   --epochs "${EPOCHS}"
   --lr "${LR}"
+  --subset_fraction "${SUBSET_FRACTION}"
+  --save_every "${SAVE_EVERY}"
 )
 
 echo "Launching training with ${GPUS} GPUs..."

@@ -51,6 +51,8 @@ class SAVVideoDataset(Dataset):
         use_precomputed: Whether to use pre-computed embeddings
         embed_path: Path to pre-computed embeddings
         split: 'train' or 'val'
+        subset_fraction: Fraction of videos to use (0.0-1.0). Default 1.0 uses all.
+                        Use 0.01 for 1% of data for quick experiments.
     """
     
     def __init__(
@@ -66,6 +68,8 @@ class SAVVideoDataset(Dataset):
         split: str = 'train',
         mean: List[float] = [123.675, 116.28, 103.53],
         std: List[float] = [58.395, 57.12, 57.375],
+        subset_fraction: float = 1.0,
+        seed: int = 42,
     ):
         super().__init__()
         self.data_path = data_path
@@ -77,14 +81,25 @@ class SAVVideoDataset(Dataset):
         self.use_precomputed = use_precomputed
         self.embed_path = embed_path
         self.split = split
+        self.subset_fraction = max(0.0, min(1.0, subset_fraction))  # Clamp to [0, 1]
+        self.seed = seed
         
         # Normalization values
         self.mean = torch.tensor(mean).view(3, 1, 1)
         self.std = torch.tensor(std).view(3, 1, 1)
         
-        # Discover videos
+        # Discover videos (with optional subset)
         self.videos = self._discover_videos()
-        print(f"Found {len(self.videos)} videos in {data_path}")
+        
+        # Apply subset fraction if less than 1.0
+        if self.subset_fraction < 1.0 and len(self.videos) > 0:
+            random.seed(self.seed)  # Reproducible subset
+            num_videos = max(1, int(len(self.videos) * self.subset_fraction))
+            self.videos = random.sample(self.videos, num_videos)
+            self.videos = sorted(self.videos)  # Keep sorted order
+            print(f"Using {self.subset_fraction*100:.1f}% subset: {len(self.videos)} videos")
+        else:
+            print(f"Found {len(self.videos)} videos in {data_path}")
         
         # Load or create annotations index
         self.annotations = self._load_annotations()
@@ -181,26 +196,41 @@ class SAVVideoDataset(Dataset):
         """
         Get mask annotation for a specific frame.
         
+        SA-V format: masklet[frame_idx] is a list of RLE dicts for that frame.
+        Each RLE dict has 'size' and 'counts' keys.
+        
         Returns a tensor of shape [num_objects, H, W] with binary masks.
         """
         annotations = self.annotations.get(video_name, {})
         masklets = annotations.get('masklet', [])
         
+        # Get original video dimensions for proper mask decoding
+        orig_height = int(annotations.get('video_height', height))
+        orig_width = int(annotations.get('video_width', width))
+        
         masks = []
-        for obj_idx, masklet in enumerate(masklets[:self.max_objects]):
-            # SA-V annotations are at 6 FPS, need to map frame index
-            anno_frame_idx = frame_idx // 4  # Assuming 24 FPS video, 6 FPS annotations
+        
+        # SA-V annotations are at 6 FPS, video is at 24 FPS
+        # Map frame index to annotation frame index
+        anno_frame_idx = frame_idx // 4
+        
+        if anno_frame_idx < len(masklets):
+            # masklets[anno_frame_idx] is a list of RLE masks for this frame
+            frame_masks = masklets[anno_frame_idx]
             
-            if anno_frame_idx < len(masklet.get('rle', [])):
-                # Decode RLE mask (simplified - actual SA-V uses specific format)
-                rle = masklet['rle'][anno_frame_idx]
-                if rle:
-                    mask = self._decode_rle(rle, height, width)
+            for obj_idx in range(min(len(frame_masks), self.max_objects)):
+                rle = frame_masks[obj_idx]
+                if rle and isinstance(rle, dict) and 'counts' in rle:
+                    mask = self._decode_rle(rle, orig_height, orig_width)
+                    # Resize mask to target size
+                    mask = F.interpolate(
+                        mask.unsqueeze(0).unsqueeze(0),
+                        size=(height, width),
+                        mode='nearest'
+                    ).squeeze(0).squeeze(0)
                 else:
                     mask = torch.zeros(height, width)
-            else:
-                mask = torch.zeros(height, width)
-            masks.append(mask)
+                masks.append(mask)
         
         # Pad to max_objects
         while len(masks) < self.max_objects:
