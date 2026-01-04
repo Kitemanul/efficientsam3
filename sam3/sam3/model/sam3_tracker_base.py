@@ -783,15 +783,15 @@ class Sam3TrackerBase(torch.nn.Module):
             else:
                 num_obj_ptr_tokens = 0
         else:
-            # directly add no-mem embedding (instead of using the transformer encoder)
-            pix_feat_with_mem = current_vision_feats[-1] + self.no_mem_embed
-            pix_feat_with_mem = pix_feat_with_mem.permute(1, 2, 0).view(B, C, H, W)
-            return pix_feat_with_mem
-
-            # Use a dummy token on the first grame (to avoid emtpy memory input to tranformer encoder)
-            to_cat_prompt = [self.no_mem_embed.expand(1, B, self.mem_dim)]
+            # Use a dummy no-memory token so the efficient memory stack still runs
+            to_cat_prompt = [
+                torch.zeros(1, B, self.mem_dim, device=device, dtype=current_vision_feats[-1].dtype)
+            ]
             to_cat_prompt_mask = [torch.zeros(B, 1, device=device, dtype=bool)]
-            to_cat_prompt_pos_embed = [self.no_mem_pos_enc.expand(1, B, self.mem_dim)]
+            to_cat_prompt_pos_embed = [
+                torch.zeros(1, B, self.mem_dim, device=device, dtype=current_vision_feats[-1].dtype)
+            ]
+            num_obj_ptr_tokens = 0
 
         # Step 2: Concatenate the memories and forward through the transformer encoder
         prompt = torch.cat(to_cat_prompt, dim=0)

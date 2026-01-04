@@ -382,6 +382,19 @@ def build_efficient_sam3_train(
     
     model = model.to(device)
     model.train()
+    # Keep frozen components in eval mode to avoid stochastic behavior (dropout/BN)
+    if freeze_image_encoder and hasattr(model, "backbone"):
+        model.backbone.eval()
+    if freeze_sam_heads:
+        for m in [
+            getattr(model, "sam_mask_decoder", None),
+            getattr(model, "sam_prompt_encoder", None),
+            getattr(model, "obj_ptr_proj", None),
+            getattr(model, "mask_downsample", None),
+            getattr(model, "obj_ptr_tpos_proj", None),
+        ]:
+            if m is not None:
+                m.eval()
     
     return model
 
