@@ -10,6 +10,12 @@ from .sa1b_prompt_dataset import SA1BPromptDataset, collate_fn
 
 def build_loader(config, build_val: bool = False):
     """Build data loaders for Stage 2 training."""
+    persistent_workers = bool(getattr(config.DATA, "PERSISTENT_WORKERS", False)) and config.DATA.NUM_WORKERS > 0
+    prefetch_factor = int(getattr(config.DATA, "PREFETCH_FACTOR", 2))
+    dl_kwargs = {}
+    if config.DATA.NUM_WORKERS > 0:
+        dl_kwargs["persistent_workers"] = persistent_workers
+        dl_kwargs["prefetch_factor"] = prefetch_factor
     
     # Training dataset
     dataset_train = SA1BPromptDataset(
@@ -31,6 +37,7 @@ def build_loader(config, build_val: bool = False):
         teacher_embed_path=config.DISTILL.TEACHER_EMBED_PATH if config.DISTILL.USE_SAVED_EMBEDDINGS else None,
         embed_dim=config.DISTILL.EMBED_DIM,
         embed_size=config.DISTILL.EMBED_SIZE,
+        teacher_embed_dtype=config.DISTILL.TEACHER_EMBED_DTYPE,
     )
     
     # Distributed sampler
@@ -52,6 +59,7 @@ def build_loader(config, build_val: bool = False):
         pin_memory=config.DATA.PIN_MEMORY,
         drop_last=True,
         collate_fn=collate_fn,
+        **dl_kwargs,
     )
     
     # Validation dataset (optional)
@@ -78,6 +86,7 @@ def build_loader(config, build_val: bool = False):
             teacher_embed_path=config.DISTILL.TEACHER_EMBED_PATH if config.DISTILL.USE_SAVED_EMBEDDINGS else None,
             embed_dim=config.DISTILL.EMBED_DIM,
             embed_size=config.DISTILL.EMBED_SIZE,
+            teacher_embed_dtype=config.DISTILL.TEACHER_EMBED_DTYPE,
         )
         
         if dist.is_initialized():
@@ -96,6 +105,7 @@ def build_loader(config, build_val: bool = False):
             pin_memory=config.DATA.PIN_MEMORY,
             drop_last=False,
             collate_fn=collate_fn,
+            **dl_kwargs,
         )
     
     return dataset_train, dataset_val, data_loader_train, data_loader_val

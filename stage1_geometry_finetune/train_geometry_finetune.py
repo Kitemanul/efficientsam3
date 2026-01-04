@@ -608,7 +608,10 @@ def train_one_epoch(config, model, criterion, data_loader, optimizer,
                 (epoch * num_steps + idx) // config.TRAIN.ACCUMULATION_STEPS
             )
         
-        torch.cuda.synchronize()
+        # NOTE: `torch.cuda.synchronize()` can significantly slow down training.
+        # Only synchronize at log intervals (when we actually report timings/memory).
+        if idx % config.PRINT_FREQ == 0:
+            torch.cuda.synchronize()
         
         # Update meters
         loss_meter.update(losses['total_loss'].item(), batch_size)

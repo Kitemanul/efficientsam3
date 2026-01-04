@@ -61,6 +61,7 @@ class SA1BPromptDataset(torch.utils.data.Dataset):
         use_point_prompts: bool = True,
         # Teacher embedding loading
         teacher_embed_path: Optional[str] = None,
+        teacher_embed_dtype: str = "float32",
         embed_dim: int = 1024,
         embed_size: int = 72,  # Match Stage 1 teacher (1008/14=72)
     ):
@@ -87,6 +88,13 @@ class SA1BPromptDataset(torch.utils.data.Dataset):
         
         # Teacher embedding settings
         self.teacher_embed_path = teacher_embed_path
+        dtype = str(teacher_embed_dtype).lower()
+        if dtype in ("float16", "fp16", "half"):
+            self.teacher_embed_dtype = torch.float16
+        elif dtype in ("float32", "fp32", "float"):
+            self.teacher_embed_dtype = torch.float32
+        else:
+            raise ValueError(f"Unsupported teacher_embed_dtype: {teacher_embed_dtype}")
         self.embed_dim = embed_dim
         self.embed_size = embed_size
         self.embed_shape = (embed_dim, embed_size, embed_size)
@@ -321,7 +329,7 @@ class SA1BPromptDataset(torch.utils.data.Dataset):
                 embedding_data = np.frombuffer(raw_data[seed_size:], dtype=np.float16)
                 teacher_embedding = torch.from_numpy(
                     embedding_data.reshape(self.embed_shape).copy()
-                ).float()
+                ).to(dtype=self.teacher_embed_dtype)
                 result['teacher_embedding'] = teacher_embedding
             except Exception as e:
                 # If embedding not found, skip this sample (with retry limit)

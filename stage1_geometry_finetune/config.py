@@ -22,6 +22,8 @@ _C.DATA.IMG_SIZE = 1008  # Match Stage 1 teacher (1008/14=72 spatial size)
 _C.DATA.INTERPOLATION = 'bicubic'
 _C.DATA.PIN_MEMORY = True
 _C.DATA.NUM_WORKERS = 8
+_C.DATA.PERSISTENT_WORKERS = True
+_C.DATA.PREFETCH_FACTOR = 2
 _C.DATA.DEBUG = False
 _C.DATA.NUM_SAMPLES = -1
 _C.DATA.FILTER_BY_AREA = [None, None]
@@ -54,6 +56,7 @@ _C.DISTILL.NUM_EMBED = _C.DISTILL.EMBED_SIZE * _C.DISTILL.EMBED_SIZE
 # Teacher embeddings (saved from Stage 1 or recomputed)
 _C.DISTILL.TEACHER_EMBED_PATH = ''
 _C.DISTILL.USE_SAVED_EMBEDDINGS = True  # Use saved trunk embeddings for efficiency
+_C.DISTILL.TEACHER_EMBED_DTYPE = 'float32'  # 'float32' (default) or 'float16' for faster I/O/transfer
 
 # Loss weights
 # NOTE: Measured raw loss scales (before training converges):
