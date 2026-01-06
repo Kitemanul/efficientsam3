@@ -49,6 +49,12 @@ stage1 = [
     "mmcv>=2.1.0",
     "pyyaml>=6.0.1",
 ]
+
+# Optional dependency: only required for the SAM1-compat EfficientViT wrapper
+# under sam3/backbones/efficientvit/efficientvit/sam.py
+sam1 = [
+    "segment-anything",
+]
 dev = [
     "pytest",
     "pytest-cov",

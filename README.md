@@ -129,6 +129,14 @@ pip install torch==2.7.0 torchvision torchaudio --index-url https://download.pyt
 
 # Install repo dependencies via the root pyproject (brings in SAM3 + Stage-1 extras)
 pip install -e ".[stage1]"
+
+# Optional (SAM1 tasks only): install the SAM1 package.
+# PyPI name: segment-anything, import name: segment_anything
+# This is only needed if you run SAM1-compat code paths (e.g. EfficientViT SAM wrapper).
+pip install -e ".[sam1]"
+
+# Or install both in one command:
+# pip install -e ".[stage1,sam1]"
 ```
 
 ---
@@ -151,14 +159,19 @@ from sam3.model.sam3_image_processor import Sam3Processor
 
 # Load model
 model = build_efficientsam3_image_model(
-    checkpoint_path="efficient_sam3_tinyvit_s.pt",
-    backbone_type="tinyvit",
-    model_name="5m"
+  checkpoint_path="efficient_sam3_efficientvit_s.pt",
+  backbone_type="efficientvit",
+  model_name="b0",
+  enable_inst_interactivity=True,
 )
 
 # Process image and predict
 processor = Sam3Processor(model)
 inference_state = processor.set_image(image)
+
+# Single positive point prompt (x, y) in pixels
+points = [[image.size[0] / 2, image.size[1] / 2]]
+labels = [1]
 masks, scores, _ = model.predict_inst(
     inference_state, 
     point_coords=points, 
