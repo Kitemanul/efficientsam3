@@ -188,8 +188,10 @@ model = build_efficientsam3_image_model(
 # Process image and predict with text prompt
 processor = Sam3Processor(model)
 inference_state = processor.set_image(image)
-inference_state = processor.set_text_prompt(inference_state, prompt="shoe")
-masks, scores, _ = model.predict_inst(inference_state)
+inference_state = processor.set_text_prompt(prompt="shoe", state=inference_state)
+masks = inference_state["masks"]
+scores = inference_state["scores"]
+print(len(scores), scores)
 ```
 
 For detailed examples including point/box prompts, batched inference, and more, see [sam3/efficientsam3_examples/efficientsam3_for_sam1_task_example.py](sam3/efficientsam3_examples/efficientsam3_for_sam1_task_example.py). For text prompt inference, see [sam3/efficientsam3_examples/efficientsam3_image_predictor_example.ipynb](sam3/efficientsam3_examples/efficientsam3_image_predictor_example.ipynb).
