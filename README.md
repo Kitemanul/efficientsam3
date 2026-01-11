@@ -23,6 +23,7 @@
 - [Training and Evaluation](#training-and-evaluation)
 - [Datasets](#datasets)
 - [EfficientSAM3 Model Zoo \& Weight Release](#efficientsam3-model-zoo--weight-release)
+- [Preliminary Evaluation](#preliminary-evaluation)
 - [CoreML / ONNX Export](#coreml--onnx-export)
 - [Web Demo](#web-demo)
 - [Development To-Do List](#development-to-do-list)
@@ -269,6 +270,9 @@ For dataset setup and download scripts (`data/download_*.sh`) covering COCO, DAV
 
 > **Note (2025/12/08):** We have also uploaded standalone text encoder weights trained on 1% Recap-DataComp-1B dataset: [MobileCLIP-S1](https://drive.google.com/file/d/1As_lkYTyxnu3nshEd3_3s50NT_m2XMul/view?usp=sharing) and [MobileCLIP2-L](https://drive.google.com/file/d/16C2-PB3-oU7uway3PdXtuVoSxvrLXjdw/view?usp=sharing). You can merge with stage 1 trained image encoder weights to get the full model.
 
+---
+
+## Preliminary Evaluation
 
 <details>
 <summary>Stage 1 Image Model Evaluation Results (COCO val2017)</summary>
@@ -286,6 +290,32 @@ For dataset setup and download scripts (`data/download_*.sh`) covering COCO, DAV
 | **ES-EV-L** | EfficientViT-B2 | 14.98M | 66.30% | 450.36 |
 
 > **Note:** The evaluation is done with a single NVIDIA 4070 Ti.
+
+</details>
+
+
+<details>
+<summary>Stage 1 Text Encoder Evaluation Results (SA-Co/VEval Noun Phrases)</summary>
+
+Metric: average token-level cosine similarity between student text features and SAM3 text encoder features.
+
+**Pretrained on 1% Recap-DataComp-1B**
+
+| Model Name | Text Backbone | Avg Cos Similarity | Eval Set |
+|------------|--------------|-------------------|----------|
+| **ES-MC-S0 (Recap-DC1B 1% pt)** | MobileCLIP-S0 | 0.864846 | 5184 noun phrases |
+| **ES-MC-S1 (Recap-DC1B 1% pt)** | MobileCLIP-S1 | 0.854405 | 5184 noun phrases |
+| **ES-MC2-L (Recap-DC1B 1% pt)** | MobileCLIP2-L | 0.850976 | 5184 noun phrases |
+
+**Fine-tuned on SA-Co Gold+Silver text annotations**
+
+| Model Name | Text Backbone | Avg Cos Similarity | Eval Set |
+|------------|--------------|-------------------|----------|
+| **ES-MC-S0 (SA-Co ft)** | MobileCLIP-S0 | 0.938915 | 5184 noun phrases |
+| **ES-MC-S1 (SA-Co ft)** | MobileCLIP-S1 | 0.947152 | 5184 noun phrases |
+| **ES-MC2-L (SA-Co ft)** | MobileCLIP2-L | 0.952901 | 5184 noun phrases |
+
+> **Note:** Evaluation is done with [eval_text_encoder_similarity.py](eval/eval_text_encoder_similarity.py) using `data/sa-v-text/sa-co-veval/saco_veval_noun_phrases.json`. Pretrained models are trained on Recap-DataComp-1B (1%), and fine-tuned models are trained on SA-Co Gold+Silver text annotations.
 
 </details>
 
