@@ -48,6 +48,9 @@ stage1 = [
     "fairscale>=0.4.13",
     "mmcv>=2.1.0",
     "pyyaml>=6.0.1",
+    # PyPI name: segment-anything, import name: segment_anything
+    # Used by some SAM1-compat utilities (e.g. EfficientViT SAM wrapper).
+    "segment-anything",
 ]
 
 # Optional dependency: only required for the SAM1-compat EfficientViT wrapper

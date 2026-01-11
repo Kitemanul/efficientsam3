@@ -7,6 +7,7 @@
 [📄 Paper](https://arxiv.org/abs/2511.15833) | [🌐 Project Page](https://simonzeng7108.github.io/efficientsam3/) | [🤗 Hugging Face](https://huggingface.co/Simon7108528/EfficientSAM3) | [💬 Discord](https://discord.gg/FMyaQca7xT)
 ---
 ## Updates
+- **[2026/01/11]** Stage 1 geometry-prompt fine-tuned (**ft**) weights released/updated (image encoders on 1% SA-1B; text encoders fine-tuned on SA-Co Gold+Silver).
 - **[2025/12/08]** Stage 1 text encoder weights released for all 3 variants (MobileCLIP S0, S1, and MobileCLIP2 L) - distilled on 1% Recap-DataComp-1B dataset.
 - **[2025/12/02]** Stage 1 image encoder weights released for all 9 variants (RepViT, TinyViT, EfficientViT) - unsupervised distilled on 1% of SA-1B dataset.
 - **[2025/11/25]** Teaser model released. See Above. More models are baking in the oven🔥.
@@ -131,13 +132,10 @@ pip install torch==2.7.0 torchvision torchaudio --index-url https://download.pyt
 # Install repo dependencies via the root pyproject (brings in SAM3 + Stage-1 extras)
 pip install -e ".[stage1]"
 
-# Optional (SAM1 tasks only): install the SAM1 package.
-# PyPI name: segment-anything, import name: segment_anything
-# This is only needed if you run SAM1-compat code paths (e.g. EfficientViT SAM wrapper).
-pip install -e ".[sam1]"
-
-# Or install both in one command:
-# pip install -e ".[stage1,sam1]"
+# Note: the Stage-1 extra includes the SAM1 package dependency
+# (PyPI name: segment-anything, import name: segment_anything).
+# If your environment cannot resolve it from PyPI, install the vendored repo instead:
+# pip install -e ./segment-anything
 ```
 
 ---
@@ -215,13 +213,23 @@ For detailed examples including point/box prompts, batched inference, and more, 
 ## Training and Evaluation
 
 **Training:**
-- For Stage 1 encoder distillation training details, see [README_stage1.md](README_stage1.md).
+- For Stage 1 encoder distillation training details, see [README_stage1.md](README_stage1.md). For Stage 1 geometry fine-tuning, check the `stage1_geometry_finetune` branch.
 - Stage 2 and Stage 3 training details coming soon.
 
 **Evaluation:**
 - To evaluate models on COCO dataset:
   ```bash
   python eval/eval_coco.py --coco_root data/coco --output_dir output
+  ```
+
+- To evaluate text encoder quality (token-level cosine similarity vs SAM3 teacher):
+  ```bash
+  python eval/eval_text_encoder_similarity.py \
+    --student-ckpt /path/to/student_text_encoder_1.pth /path/to/student_text_encoder_2.pth \
+    --np-json data/sa-v-text/sa-co-veval/saco_veval_noun_phrases.json \
+    --device cuda
+  # Optional: override teacher checkpoint
+  #   --teacher-ckpt /path/to/sam3_teacher_checkpoint.pt
   ```
 
 ---
@@ -242,33 +250,37 @@ For dataset setup and download scripts (`data/download_*.sh`) covering COCO, DAV
 | Model Name | Backbone | Parameters | Stage 1 Weights<br/>(Encoder Distilled) | Stage 2 Weights<br/>(Memory Module Trained) | Stage 3 Weights<br/>(End-to-End Fine-Tuned) |
 |------------|----------|------------|----------------------------------------|---------------------------------------------|---------------------------------------------|
 | **ES-RV-S** | RepViT-M0.9 | 4.72M | [GDrive](https://drive.google.com/file/d/1lVvPPoIVDhCFGte-1E_dr4X5EKbE5xKq/view?usp=drive_link) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_repvit_s.pt) | $$\text{Planned}$$ | $$\text{Planned}$$ |
-| **ES-RV-M** | RepViT-M1.1 | 7.77M | [GDrive](https://drive.google.com/file/d/1JW3KiTnYF2r8nIijf8UXrKXJwf5D5s-5/view?usp=drive_link) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_repvit_m.pt) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-RV-M** | RepViT-M1.1 | 7.77M | [GDrive](https://drive.google.com/file/d/1JW3KiTnYF2r8nIijf8UXrKXJwf5D5s-5/view?usp=drive_link) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_repvit_m.pt) (ft: [GDrive](https://drive.google.com/file/d/1FYpWqSOY_iZcfk_Q07s4laUZXgFUK5tZ/view?usp=sharing), [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_repvit_m_geo_ft.pt)) | $$\text{Planned}$$ | $$\text{Planned}$$ |
 | **ES-RV-L** | RepViT-M2.3 | 22.40M | [GDrive](https://drive.google.com/file/d/1ocAkz6DgkaKCKpLdalq2Ya8X6VIMrLLI/view?usp=drive_link) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_repvit_l.pt) | $$\text{Planned}$$ | $$\text{Planned}$$ |
 | **ES-TV-S** | TinyViT-5M | 5.07M | [GDrive](https://drive.google.com/file/d/1CDfJTd2fTKJTV5nsfYLAV_CGMfQ-AWXS/view?usp=drive_link) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_tinyvit_s.pt) | $$\text{Planned}$$ | $$\text{Planned}$$ |
-| **ES-TV-M** | TinyViT-11M | 10.55M | [GDrive](https://drive.google.com/file/d/1TX70zw7SduQRZP6hce6MIxEOsdoooZFB/view?usp=drive_link) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_tinyvit_m.pt) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-TV-M** | TinyViT-11M | 10.55M | [GDrive](https://drive.google.com/file/d/1TX70zw7SduQRZP6hce6MIxEOsdoooZFB/view?usp=drive_link) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_tinyvit_m.pt) (ft: [GDrive](https://drive.google.com/file/d/1NgctD7y_ylE1P6ULjXXywcfmNZPJ_lA1/view?usp=sharing), [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_tinyvit_m_geo_ft.pt)) | $$\text{Planned}$$ | $$\text{Planned}$$ |
 | **ES-TV-L** | TinyViT-21M | 20.62M | [GDrive](https://drive.google.com/file/d/19hyKjjZ4_8ldmxIAm6D8e8z89xX-M3hZ/view?usp=drive_link) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_tinyvit_l.pt) | $$\text{Planned}$$ | $$\text{Planned}$$ |
 | **ES-EV-S** | EfficientViT-B0 | 0.68M | [GDrive](https://drive.google.com/file/d/1EnA581iSExZRRWlI6oY-wXTgX4gESijG/view?usp=drive_link) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_efficientvit_s.pt) | $$\text{Planned}$$ | $$\text{Planned}$$ |
-| **ES-EV-M** | EfficientViT-B1 | 4.64M | [GDrive](https://drive.google.com/file/d/14CRA3LhquUkf8prrKfI1INyHtCw6buvm/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_efficientvit_m.pt) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-EV-M** | EfficientViT-B1 | 4.64M | [GDrive](https://drive.google.com/file/d/14CRA3LhquUkf8prrKfI1INyHtCw6buvm/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_efficientvit_m.pt) (ft: [GDrive](https://drive.google.com/file/d/1cNF1mB2of7tyP32vs5M2kS8DfW1NkTAG/view?usp=sharing), [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_efficientvit_m_geo_ft.pt)) | $$\text{Planned}$$ | $$\text{Planned}$$ |
 | **ES-EV-L** | EfficientViT-B2 | 14.98M | [GDrive](https://drive.google.com/file/d/1Zg0Er0LwYYNCFJezSUSlQ8L645cR1OhN/view?usp=drive_link) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_efficientvit_l.pt) | $$\text{Planned}$$ | $$\text{Planned}$$ |
 
 > **Note (2025/12/02):** The current Stage 1 image encoder weights are distilled on 1% of the SA-1B dataset.
 
-### EfficientSAM3 Text Encoder + Image Encoder Models
+> **Note (2026/01/11):** The fine-tuned (**ft**) models use geometry-prompt fine-tuning on the same 1% subset of SA-1B; see training details in the `stage1_geometry_finetune` branch.
+
+### EfficientSAM3 Text Encoder + EfficientSAM3 Image Encoder Models
 
 | Model Name | Backbone | Parameters | Stage 1 Weights<br/>(Encoder Distilled) | Stage 2 Weights<br/>(Memory Module Trained) | Stage 3 Weights<br/>(End-to-End Fine-Tuned) |
 |------------|----------|------------|----------------------------------------|---------------------------------------------|---------------------------------------------|
 | **ES-RV-S-MC-S1** | RepViT-M0.9 & MobileCLIP-S1 | 4.72M + 63.56M | [GDrive](https://drive.google.com/file/d/1SvBPDqeEYCKpOui79tCIl3c1nMnQijL-/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_repvit-m0_9_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
-| **ES-RV-M-MC-S1** | RepViT-M1.1 & MobileCLIP-S1 | 7.77M + 63.56M | [GDrive](https://drive.google.com/file/d/10VB-1IYAO3iqGq3U63xcM9uGyrqGGvAi/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_repvit-m1_1_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-RV-M-MC-S1** | RepViT-M1.1 & MobileCLIP-S1 | 7.77M + 63.56M | [GDrive](https://drive.google.com/file/d/10VB-1IYAO3iqGq3U63xcM9uGyrqGGvAi/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_repvit-m1_1_mobileclip_s1.pth) (ft: [GDrive](https://drive.google.com/file/d/1HL0qSgB8Z5NjJJHdSfdZUaLCKJPCZR_x/view?usp=sharing), [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_repvit_m1.1_mobileclip_s1_ft.pth)) | $$\text{Planned}$$ | $$\text{Planned}$$ |
 | **ES-RV-L-MC-S1** | RepViT-M2.3 & MobileCLIP-S1 | 22.40M + 63.56M | [GDrive](https://drive.google.com/file/d/1IxcVq1BBlMF2LNJ2uljQ8ajLpOWKFpUr/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_repvit-m2_3_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
 | **ES-TV-S-MC-S1** | TinyViT-5M & MobileCLIP-S1 | 5.07M + 63.56M | [GDrive](https://drive.google.com/file/d/1EtG6j3pGtaf-taxo5NLGCqZ8QvOgdLAn/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_tinyvit_5m_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
-| **ES-TV-M-MC-S1** | TinyViT-11M & MobileCLIP-S1 | 10.55M + 63.56M | [GDrive](https://drive.google.com/file/d/1dz5bl0RkCbEUjeK54azREbkEQA-hW_IG/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_tinyvit_11m_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-TV-M-MC-S1** | TinyViT-11M & MobileCLIP-S1 | 10.55M + 63.56M | [GDrive](https://drive.google.com/file/d/1dz5bl0RkCbEUjeK54azREbkEQA-hW_IG/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_tinyvit_11m_mobileclip_s1.pth) (ft: [GDrive](https://drive.google.com/file/d/1rH-tAKNfhrIPCGDbdLPdWWxxx2GHnaaS/view?usp=sharing), [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_tiny_vit_11m_mobileclip_s1_ft.pth)) | $$\text{Planned}$$ | $$\text{Planned}$$ |
 | **ES-TV-L-MC-S1** | TinyViT-21M & MobileCLIP-S1 | 20.62M + 63.56M | [GDrive](https://drive.google.com/file/d/1DIeJmFle_tHAUKWbycxrNQAW0peZAuy4/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_tinyvit_21m_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
 | **ES-EV-S-MC-S1** | EfficientViT-B0 & MobileCLIP-S1 | 0.68M + 63.56M | [GDrive](https://drive.google.com/file/d/1pa4wKJysp2dUVkUMTrJ7Rs8ZVPIHntFL/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_efficientvit-b0_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
-| **ES-EV-M-MC-S1** | EfficientViT-B1 & MobileCLIP-S1 | 4.64M + 63.56M | [GDrive](https://drive.google.com/file/d/1Ds8AMZIw3DkWw4J3ml82Ke1RKBpFGT8T/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_efficientvit-b1_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
+| **ES-EV-M-MC-S1** | EfficientViT-B1 & MobileCLIP-S1 | 4.64M + 63.56M | [GDrive](https://drive.google.com/file/d/1Ds8AMZIw3DkWw4J3ml82Ke1RKBpFGT8T/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_efficientvit-b1_mobileclip_s1.pth) (ft: [GDrive](https://drive.google.com/file/d/1jMiRuMj6aHDg7mncHxNT3I1URD4-H9el/view?usp=sharing), [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_efficientvit_b1_mobileclip_s1_ft.pth)) | $$\text{Planned}$$ | $$\text{Planned}$$ |
 | **ES-EV-L-MC-S1** | EfficientViT-B2 & MobileCLIP-S1 | 14.98M + 63.56M | [GDrive](https://drive.google.com/file/d/1d_dqJvaAm8rYYoYQIrpSpi9iWpDeDS2q/view?usp=sharing) / [HF](https://huggingface.co/Simon7108528/EfficientSAM3/resolve/main/stage1_all_converted/efficient_sam3_efficientvit-b2_mobileclip_s1.pth) | $$\text{Planned}$$ | $$\text{Planned}$$ |
 > **Note (2025/12/08):** The current Stage 1 text encoder weights are distilled on 1% of the Recap-DataComp-1B dataset combined with all 9 image encoder variants. We notice a performance degradation, this is expected as the text encoder are not aligning with the light image encoders in stage1. We will release the stage1+ fine-tuned weights in the future.
 
 > **Note (2025/12/08):** We have also uploaded standalone text encoder weights trained on 1% Recap-DataComp-1B dataset: [MobileCLIP-S1](https://drive.google.com/file/d/1As_lkYTyxnu3nshEd3_3s50NT_m2XMul/view?usp=sharing) and [MobileCLIP2-L](https://drive.google.com/file/d/16C2-PB3-oU7uway3PdXtuVoSxvrLXjdw/view?usp=sharing). You can merge with stage 1 trained image encoder weights to get the full model.
+
+> **Note (2026/01/11):** The fine-tuned (**ft**) text encoder models are fine-tuned on SA-Co Gold+Silver text annotations. Standalone fine-tuned text encoder weights: [MobileCLIP-S0](https://drive.google.com/file/d/1JtbqC2d_F0i9pN-skGuUfSnJx50aAKsd/view?usp=sharing), [MobileCLIP-S1](https://drive.google.com/file/d/14x9iwLnVq282fGPy8JypnCWsB9da_1Mh/view?usp=sharing), and [MobileCLIP2-L](https://drive.google.com/file/d/1xdyDkGaBwUYALZ1u7U7sGS7yq-gIEnDz/view?usp=sharing).
 
 ---
 
@@ -280,13 +292,13 @@ For dataset setup and download scripts (`data/download_*.sh`) covering COCO, DAV
 | Model Name | Backbone | Parameters | COCO mIoU | Test Time (s) |
 |------------|----------|------------|-----------|---------------|
 | **ES-RV-S** | RepViT-M0.9 | 4.72M | 64.80% | 407.23 |
-| **ES-RV-M** | RepViT-M1.1 | 7.77M | 65.28% | 413.38 |
+| **ES-RV-M** | RepViT-M1.1 | 7.77M | 65.28% (ft 65.60%) | 413.38  |
 | **ES-RV-L** | RepViT-M2.3 | 22.40M | 65.53% | 466.66 |
 | **ES-TV-S** | TinyViT-5M | 5.07M | 65.51% | 430.52 |
-| **ES-TV-M** | TinyViT-11M | 10.55M | 65.45% | 443.45 |
+| **ES-TV-M** | TinyViT-11M | 10.55M | 65.45% (ft 65.69%) | 443.45  |
 | **ES-TV-L** | TinyViT-21M | 20.62M | 66.29% | 452.14 |
 | **ES-EV-S** | EfficientViT-B0 | 0.68M | 61.62% | 419.57 |
-| **ES-EV-M** | EfficientViT-B1 | 4.64M | 64.82% | 434.45 |
+| **ES-EV-M** | EfficientViT-B1 | 4.64M | 64.82% (ft 64.94%) | 434.45  |
 | **ES-EV-L** | EfficientViT-B2 | 14.98M | 66.30% | 450.36 |
 
 > **Note:** The evaluation is done with a single NVIDIA 4070 Ti.
@@ -337,7 +349,7 @@ Coming soon: an interactive web demo for real-time concept segmentation and trac
 
 - [x] **Release Stage 1 Image Encoder Weights**: Distilled image encoder weights from SAM3 image encoder for all 9 variants (RepViT, TinyViT, EfficientViT)
 - [x] **Release Stage 1 Text Encoder Weights**: Distill SAM3 text encoder weights to MobileCLIP-S1 combined with all 9 image encoder variants
-- [ ] **Release Stage 1+ Fine-Tuned Encoder Weights**: Prompt-in-the-loop supervised fine-tuning for improved encoder performance
+- [x] **Release Stage 1+ Fine-Tuned Encoder Weights**: Prompt-in-the-loop supervised fine-tuning for improved encoder performance
 - [ ] **Release Stage 2 Memory Bank Aligned Model Weights**: Models with Perceiver-based memory compression trained on SA-V dataset
 - [ ] **Release Stage 3 Fine-Tuned Model Weights**: End-to-end fine-tuned models on SAM3 dataset with full PCS capabilities
 - [ ] **ONNX/CoreML Export**: Export models to ONNX and CoreML formats for cross-platform deployment

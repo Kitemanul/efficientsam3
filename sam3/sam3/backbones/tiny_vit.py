@@ -277,12 +277,16 @@ class Attention(torch.nn.Module):
         k = k.permute(0, 2, 1, 3)
         v = v.permute(0, 2, 1, 3)
 
-        attn = (
-            (q @ k.transpose(-2, -1)) * self.scale
-            +
-            (self.attention_biases[:, self.attention_bias_idxs]
-             if self.training else self.ab)
-        )
+        if self.training:
+            attn_bias = self.attention_biases[:, self.attention_bias_idxs]
+        else:
+            attn_bias = getattr(self, "ab", None)
+            if attn_bias is None:
+                attn_bias = self.attention_biases[:, self.attention_bias_idxs]
+            if attn_bias.device != q.device:
+                attn_bias = attn_bias.to(q.device)
+
+        attn = (q @ k.transpose(-2, -1)) * self.scale + attn_bias
         attn = attn.softmax(dim=-1)
         x = (attn @ v).transpose(1, 2).reshape(B, N, self.dh)
         x = self.proj(x)

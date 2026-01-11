@@ -210,6 +210,49 @@ find data/sa-v -type f -name "*.tar" -print0 \
   | xargs -0 -I{} tar -xf {} -C data/sa-v-extracted
 ```
 
+---
+
+### SA-Co (Gold/Silver) + SA-Co/VEval — `data/sa-v-text/*`
+
+EfficientSAM3 uses the SA-Co benchmarks for text-centric evaluation:
+
+- SA-Co/Gold (images + noun phrases + multi-annotator masks)
+- SA-Co/Silver (images/frames + noun phrases + single-annotator masks)
+- SA-Co/VEval (video frame evaluation for SA-V / YT-Temporal-1B / SmartGlasses)
+
+This repo does not provide a one-click downloader for these datasets (they require dataset-specific steps and/or dynamic links). Please follow the official SAM3 instructions:
+
+- SA-Co/Gold: https://github.com/facebookresearch/sam3/blob/main/scripts/eval/gold/README.md
+- SA-Co/Silver: https://github.com/facebookresearch/sam3/blob/main/scripts/eval/silver/README.md
+- SA-Co/VEval: https://github.com/facebookresearch/sam3/blob/main/scripts/eval/veval/README.md
+
+Suggested local layout (matches this repo’s existing folders):
+
+- `data/sa-v-text/sa-co-gold/`
+- `data/sa-v-text/sa-co-silver/`
+- `data/sa-v-text/sa-co-veval/`
+
+Annotations are also hosted on Hugging Face (see the official READMEs for the exact file list and any required image/video sources):
+
+- https://huggingface.co/datasets/facebook/SACo-Gold
+- https://huggingface.co/datasets/facebook/SACo-Silver
+- https://huggingface.co/datasets/facebook/SACo-VEval
+
+Example (download a dataset repo locally):
+
+```bash
+# Requires: pip install huggingface_hub
+
+# SA-Co/Gold annotations (and metadata)
+huggingface-cli download facebook/SACo-Gold --repo-type dataset --local-dir data/sa-v-text/sa-co-gold
+
+# SA-Co/Silver annotations (and metadata)
+huggingface-cli download facebook/SACo-Silver --repo-type dataset --local-dir data/sa-v-text/sa-co-silver
+
+# SA-Co/VEval annotations/media index files (see official VEval README for required media)
+huggingface-cli download facebook/SACo-VEval --repo-type dataset --local-dir data/sa-v-text/sa-co-veval
+```
+
 ### LVOS v2 — `data/download_lvos.sh`
 
 Downloads LVOS v2 train/val from Google Drive using `gdown`. Accepts URLs via args or env vars `LVOS_TRAIN_URL` and `LVOS_VAL_URL`.
