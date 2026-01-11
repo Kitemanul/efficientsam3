@@ -92,6 +92,10 @@ def main():
     # 1. Add Image Student Weights
     print(f"Merging Image Student weights (prefix: {image_prefix})...")
     for key, value in image_sd.items():
+        # Remove student_trunk prefix if present (artifact from training wrapper)
+        if key.startswith("student_trunk."):
+            key = key.replace("student_trunk.", "")
+            
         merged_key = f"{image_prefix}{key}"
         merged[merged_key] = value
 

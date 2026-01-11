@@ -581,26 +581,51 @@ def _create_sam3_transformer(has_presence_token: bool = True) -> TransformerWrap
 def _load_checkpoint(model, checkpoint_path):
     """Load model checkpoint from file."""
     with g_pathmgr.open(checkpoint_path, "rb") as f:
-        ckpt = torch.load(f, map_location="cpu", weights_only=True)
+        # Check if torch version supports weights_only
+        try:
+           ckpt = torch.load(f, map_location="cpu", weights_only=True)
+        except TypeError:
+           ckpt = torch.load(f, map_location="cpu")
+           
     if "model" in ckpt and isinstance(ckpt["model"], dict):
         ckpt = ckpt["model"]
+        
+    # Standardize keys by removing prefixes and handling wrappers
+    cleaned_ckpt = {}
+    for k, v in ckpt.items():
+        new_k = k
+        if new_k.startswith("detector."):
+            new_k = new_k.replace("detector.", "")
+            
+        # Handle 'student_trunk' wrapper which might be present in student usage
+        # e.g., ...backbone.model.student_trunk.head... -> ...backbone.model.head...
+        if "student_trunk." in new_k:
+            new_k = new_k.replace("student_trunk.", "")
+            
+        cleaned_ckpt[new_k] = v
+        
     sam3_image_ckpt = {
-        k.replace("detector.", ""): v for k, v in ckpt.items() if "detector" in k
+        k: v for k, v in cleaned_ckpt.items() if k in model.state_dict() or "backbone" in k
     }
-    if model.inst_interactive_predictor is not None:
-        sam3_image_ckpt.update(
-            {
-                k.replace("tracker.", "inst_interactive_predictor.model."): v
-                for k, v in ckpt.items()
-                if "tracker" in k
-            }
-        )
-    missing_keys, _ = model.load_state_dict(sam3_image_ckpt, strict=False)
+    
+    # Handle tracker/instance predictor if enabled
+    if getattr(model, "inst_interactive_predictor", None) is not None:
+        tracker_prefix = "inst_interactive_predictor.model."
+        tracker_keys = {
+            k.replace("tracker.", tracker_prefix): v 
+            for k, v in ckpt.items() 
+            if "tracker" in k
+        }
+        sam3_image_ckpt.update(tracker_keys)
+
+    missing_keys, unexpected_keys = model.load_state_dict(sam3_image_ckpt, strict=False)
     if len(missing_keys) > 0:
         print(
             f"loaded {checkpoint_path} and found "
-            f"missing and/or unexpected keys:\n{missing_keys=}"
+            f"missing keys: {len(missing_keys)} and unexpected keys: {len(unexpected_keys)}.\n"
+            f"Sample missing: {missing_keys[:5]}"
         )
+
 
 
 def _setup_device_and_mode(model, device, eval_mode):
@@ -837,8 +862,9 @@ def _create_student_vision_backbone(
                     x = layer(x)
                 # Reshape from (B, L, C) to (B, C, H, W)
                 B, L, C = x.shape
-                H, W = self.model.layers[-1].input_resolution
-                x = x.view(B, H, W, C).permute(0, 3, 1, 2).contiguous()
+                # Dynamic reshape assuming square
+                side = int(L ** 0.5)
+                x = x.view(B, side, side, C).permute(0, 3, 1, 2).contiguous()
                 return x
 
         wrapped_backbone = TinyViTTrunkWrapper(backbone)

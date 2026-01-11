@@ -280,6 +280,22 @@ For dataset setup and download scripts (`data/download_*.sh`) covering COCO, DAV
 
 </details>
 
+
+<details>
+<summary>Stage 1 Text Encoder Evaluation Results (SA-Co/VEval Noun Phrases)</summary>
+
+Metric: average token-level cosine similarity between student text features and SAM3 text encoder features.
+
+| Model Name | Text Backbone | Avg Cos Similarity | Eval Set | Batch Size |
+|------------|--------------|-------------------|----------|------------|
+| **ES-MC-S0 (SA-Co ft)** | MobileCLIP-S0 | 0.938915 | 5184 noun phrases | 128 |
+| **ES-MC-S1 (SA-Co ft)** | MobileCLIP-S1 | 0.947152 | 5184 noun phrases | 128 |
+| **ES-MC2-L (SA-Co ft)** | MobileCLIP2-L | 0.952901 | 5184 noun phrases | 128 |
+
+> **Note:** This evaluation uses [eval/eval_text_encoder_similarity.py](eval/eval_text_encoder_similarity.py) with teacher = SAM3 language backbone (text-only) and input noun phrases from `data/sa-v-text/sa-co-veval/saco_veval_noun_phrases.json`. The “SA-Co ft, epoch 39” checkpoints correspond to `output/ckpt_epoch_39_{s0,s1,l}` (fine-tuned on SA-Co Gold+Silver text annotations).
+
+</details>
+
 ---
 
 

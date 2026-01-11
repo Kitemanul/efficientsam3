@@ -207,19 +207,26 @@ def train_one_epoch(
 
         with torch.cuda.amp.autocast(enabled=config.AMP_ENABLE):
             # model returns (mask, memory, embeds)
-            # memory is [Seq, Batch, Dim]
-            _, preds, _ = model(samples, device="cuda")
+            # mask: [Batch, Seq] (True for padding, False for valid)
+            # memory: [Seq, Batch, Dim]
+            pad_mask, preds, _ = model(samples, device="cuda")
             preds = preds.transpose(0, 1)
 
             # preds: [Batch, Seq, 256]
             # saved_embeddings: [Batch, Seq, 256]
-            
-            loss = text_mse(preds, saved_embeddings)
-
-            if config.DISTILL.COSINE > 0.0:
-                loss += config.DISTILL.COSINE * text_cosine_loss(
-                    preds, saved_embeddings
-                )
+            if getattr(config.DISTILL, "MASK_PAD_TOKENS", False):
+                valid = (~pad_mask).float()
+                loss = masked_text_mse(preds, saved_embeddings, valid)
+                if config.DISTILL.COSINE > 0.0:
+                    loss += config.DISTILL.COSINE * masked_text_cosine_loss(
+                        preds, saved_embeddings, valid
+                    )
+            else:
+                loss = text_mse(preds, saved_embeddings)
+                if config.DISTILL.COSINE > 0.0:
+                    loss += config.DISTILL.COSINE * text_cosine_loss(
+                        preds, saved_embeddings
+                    )
 
             loss = loss / config.TRAIN.ACCUMULATION_STEPS
         
@@ -288,6 +295,28 @@ def text_cosine_loss(preds, teacher):
     # Cosine similarity along channel dimension (dim=2)
     sim = F.cosine_similarity(preds, teacher, dim=2) # (B, Seq)
     loss = 1.0 - sim
+    return loss.mean()
+
+
+def masked_text_mse(preds, teacher, valid):
+    # preds: (B, Seq, C)
+    # teacher: (B, Seq, C)
+    # valid: (B, Seq) with 1 for valid tokens, 0 for padding
+    diff = (preds - teacher) * valid.unsqueeze(-1)
+    denom = (valid.sum(dim=1).clamp(min=1.0) * preds.size(2))
+    loss = diff.square().sum(dim=(1, 2)) / denom
+    return loss.mean()
+
+
+def masked_text_cosine_loss(preds, teacher, valid):
+    # preds: (B, Seq, C)
+    # teacher: (B, Seq, C)
+    # valid: (B, Seq) with 1 for valid tokens, 0 for padding
+    sim = F.cosine_similarity(preds, teacher, dim=2)  # (B, Seq)
+    loss = 1.0 - sim
+    loss = loss * valid
+    denom = valid.sum(dim=1).clamp(min=1.0)
+    loss = loss.sum(dim=1) / denom
     return loss.mean()
 
 

@@ -57,6 +57,7 @@ _C.DISTILL.TEACHER_EMBED_PATH = 'data/teacher_embeddings'
 _C.DISTILL.SAVE_TEACHER_EMBED = False
 _C.DISTILL.NO_RAND = True
 _C.DISTILL.MAX_ALLOWED_PROMPTS = -1
+_C.DISTILL.MASK_PAD_TOKENS = False
 
 # -----------------------------------------------------------------------------
 # Training settings
