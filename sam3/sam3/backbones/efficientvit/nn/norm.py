@@ -4,7 +4,10 @@ import torch
 import torch.nn as nn
 from torch.nn.modules.batchnorm import _BatchNorm
 
-from .triton_rms_norm import TritonRMSNorm2dFunc
+try:
+    from .triton_rms_norm import TritonRMSNorm2dFunc
+except (ImportError, ModuleNotFoundError):
+    TritonRMSNorm2dFunc = None  # Triton not available
 from ..utils import build_kwargs_from_config
 
 __all__ = ["LayerNorm2d", "TritonRMSNorm2d", "build_norm", "reset_bn", "set_norm_eps"]

@@ -5,7 +5,10 @@ import torch
 import torch.nn.functional as F
 from numpy.typing import NDArray
 
-from sam3.model.edt import edt_triton
+try:
+    from sam3.model.edt import edt_triton
+except (ImportError, AttributeError):
+    edt_triton = None  # Triton not available on this platform
 
 
 def sample_box_points(

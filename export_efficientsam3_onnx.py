@@ -447,19 +447,53 @@ def export_text_encoder(
     num_params = sum(p.numel() for p in model.parameters())
     print(f"  Parameters: {num_params / 1e6:.2f}M")
 
+    # Create wrapper that accepts token IDs directly (skip tokenizer)
+    class TextEncoderWrapper(nn.Module):
+        """Wrapper that accepts pre-tokenized input."""
+        def __init__(self, text_encoder):
+            super().__init__()
+            self.encoder = text_encoder.encoder  # MobileCLIPTextTransformer
+            self.projector = text_encoder.projector
+
+        def forward(self, input_ids):
+            """
+            Args:
+                input_ids: [B, seq_len] - token IDs (int64)
+            Returns:
+                text_features: [B, seq_len, output_dim] - text embeddings
+            """
+            # Get embeddings from token IDs
+            input_embeds = self.encoder.forward_embedding(input_ids)  # [B, Seq, Dim]
+
+            # Pass through transformer
+            text_memory = self.encoder(
+                input_embeds,
+                return_all_tokens=True,
+                input_is_embeddings=True
+            )  # [B, Seq, Dim]
+
+            # Project to output dimension
+            text_features = self.projector(text_memory)  # [B, Seq, OutputDim]
+
+            return text_features
+
+    wrapper = TextEncoderWrapper(model)
+    wrapper.eval()
+
     # Export
     output_path = os.path.join(output_dir, f"text_encoder_{backbone_name.lower().replace('-', '_')}.onnx")
 
     # Text encoder input: token IDs [B, seq_len]
     seq_len = 32  # context_length used in training
-    dummy_input = (torch.randint(0, 49408, (1, seq_len)),)
+    dummy_input = (torch.randint(0, 49408, (1, seq_len), dtype=torch.long),)
 
+    print(f"Exporting to: {output_path}")
     export_to_onnx(
-        model=model,
+        model=wrapper,
         output_path=output_path,
         dummy_input=dummy_input,
         input_names=["input_ids"],
-        output_names=["text_embedding"],
+        output_names=["text_features"],
         opset_version=opset_version,
     )
 
