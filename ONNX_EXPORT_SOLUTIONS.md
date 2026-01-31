@@ -112,67 +112,56 @@ tgt2 = self.cross_attn_image(
 
 ---
 
-### 问题 4: 自定义 Cross-Attention 模块
+### ~~问题 4: 自定义 Cross-Attention 模块~~ (已排除，非问题)
 
-**原代码**:
+经过仔细排查 `model_builder.py` 中的构建代码，确认 Transformer Fusion 中所有 Attention 模块都是**标准的 `nn.MultiheadAttention`**，不存在自定义 Attention 结构。
 
-```python
-# encoder.py:58
-self.cross_attn_image = cross_attention  # 外部传入的自定义模块
-```
-
-**问题**: 自定义 Attention 模块可能不被 ONNX 支持。
-
-**解决**: 替换为标准 `nn.MultiheadAttention`。
+**构建代码** (`model_builder.py:116-138`):
 
 ```python
-# 修改后: 使用标准 MultiheadAttention
-self.cross_attn_image = nn.MultiheadAttention(
-    embed_dim=d_model,
-    num_heads=8,  # 根据原模型配置
-    dropout=dropout,
-    batch_first=False,
-)
-```
-
-**权重兼容性**: ⚠️ 需要权重转换脚本（参数名不同）
-
-**权重转换示例**:
-
-```python
-def convert_custom_attn_to_mha(old_state_dict, prefix):
-    """将自定义 Attention 权重转换为标准 MultiheadAttention 格式"""
-    new_state_dict = {}
-
-    q_weight = old_state_dict[f"{prefix}.q_proj.weight"]
-    k_weight = old_state_dict[f"{prefix}.k_proj.weight"]
-    v_weight = old_state_dict[f"{prefix}.v_proj.weight"]
-
-    # MultiheadAttention 用 in_proj_weight 合并 QKV
-    new_state_dict[f"{prefix}.in_proj_weight"] = torch.cat(
-        [q_weight, k_weight, v_weight], dim=0
+def _create_transformer_encoder():
+    encoder_layer = TransformerEncoderLayer(
+        ...
+        self_attention=MultiheadAttention(     # ← MultiheadAttentionWrapper
+            num_heads=8, dropout=0.1, embed_dim=256, batch_first=True,
+        ),
+        cross_attention=MultiheadAttention(    # ← MultiheadAttentionWrapper
+            num_heads=8, dropout=0.1, embed_dim=256, batch_first=True,
+        ),
     )
-
-    if f"{prefix}.q_proj.bias" in old_state_dict:
-        q_bias = old_state_dict[f"{prefix}.q_proj.bias"]
-        k_bias = old_state_dict[f"{prefix}.k_proj.bias"]
-        v_bias = old_state_dict[f"{prefix}.v_proj.bias"]
-        new_state_dict[f"{prefix}.in_proj_bias"] = torch.cat(
-            [q_bias, k_bias, v_bias], dim=0
-        )
-
-    # out_proj 保持不变
-    new_state_dict[f"{prefix}.out_proj.weight"] = \
-        old_state_dict[f"{prefix}.out_proj.weight"]
-    new_state_dict[f"{prefix}.out_proj.bias"] = \
-        old_state_dict[f"{prefix}.out_proj.bias"]
-
-    return new_state_dict
 ```
+
+**MultiheadAttentionWrapper 定义** (`model_misc.py:31-34`):
+
+```python
+class MultiheadAttentionWrapper(nn.MultiheadAttention):
+    def forward(self, *args, **kwargs):
+        kwargs["need_weights"] = False          # ← 唯一区别: 不返回注意力权重
+        return super().forward(*args, **kwargs)
+```
+
+**结论**: `MultiheadAttentionWrapper` 继承自 `nn.MultiheadAttention`，只添加了 `need_weights=False`。
+
+- ✅ 权重格式与标准 `nn.MultiheadAttention` 完全相同
+- ✅ 计算逻辑完全相同
+- ✅ ONNX 导出时直接使用 `nn.MultiheadAttention` 加载权重即可，**无需任何转换**
+
+**Transformer Fusion 中所有 Attention 的实际类型**:
+
+| 组件 | Attention | 实际类 | ONNX 兼容 |
+|------|-----------|--------|-----------|
+| Encoder Self-Attn | `self.self_attn` | `nn.MultiheadAttention` (Wrapper) | ✅ |
+| Encoder Cross-Attn | `self.cross_attn_image` | `nn.MultiheadAttention` (Wrapper) | ✅ |
+| Decoder Self-Attn | `self.self_attn` | `nn.MultiheadAttention` | ✅ |
+| Decoder Image Cross-Attn | `self.cross_attn` | `nn.MultiheadAttention` (Wrapper) | ✅ |
+| Decoder Text Cross-Attn | `self.ca_text` | `nn.MultiheadAttention` | ✅ |
+| SegHead Cross-Attn | `self.cross_attend_prompt` | `nn.MultiheadAttention` (Wrapper) | ✅ |
+
+> **注意**: 真正自定义的 Attention (`RoPEAttention`) 只在 **Tracker 的 SAM Mask Decoder** 中使用，不在 Transformer Fusion 内部。
 
 ---
 
-### 问题 5: 文本池化条件 (lines 543-551)
+### 问题 4: 文本池化条件 (lines 543-551)
 
 **原代码**:
 
@@ -205,10 +194,16 @@ src_1 = src_1 + pooled_text  # 如果有多级特征
 
 ```python
 class OnnxTransformerEncoderLayer(nn.Module):
-    """ONNX 可导出的 Transformer Encoder Layer"""
+    """ONNX 可导出的 Transformer Encoder Layer
+
+    注意: 原模型中的 Attention 就是标准的 nn.MultiheadAttention
+    (MultiheadAttentionWrapper 只加了 need_weights=False，不影响计算和权重)
+    因此可以直接加载原始权重，无需转换。
+    """
 
     def __init__(self, d_model=256, nhead=8, dim_feedforward=2048, dropout=0.0):
         super().__init__()
+        # 与原模型完全相同的标准 Attention (权重可直接加载)
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
         self.cross_attn_image = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
 
@@ -1208,7 +1203,7 @@ print("所有 LayerNorm 已替换!")
 │  │  │  Transformer Encoder (简化版 ONNX)            │   │    │
 │  │  │  - 固定 pre_norm=True                        │   │    │
 │  │  │  - 移除 DAC                                  │   │    │
-│  │  │  - 标准 MHA 替换自定义 Attention              │   │    │
+│  │  │  - Attention 已是标准 MHA (权重直接加载)      │   │    │
 │  │  │  - LayerNorm → ManualLayerNorm               │   │    │
 │  │  │  .onnx                                       │   │    │
 │  │  └──────────────────┬───────────────────────────┘   │    │
@@ -1352,10 +1347,15 @@ print("所有 ONNX 模型导出完成!")
 | 固定条件表达式 | ✅ 完全兼容 | Encoder |
 | 固定 presence_token 拼接 | ✅ 完全兼容 | Decoder |
 | 展开循环 | ✅ 完全兼容 | Decoder |
-| 替换自定义 Attention | ⚠️ 需要转换脚本 | Encoder, Decoder |
+| Attention 模块 | ✅ 已是标准 MHA，无需替换 | Encoder, Decoder |
 | 替换 LayerNorm | ✅/⚠️ 取决于方案 | 全部 |
 | 展开 List[Tensor] | ✅ 完全兼容 | Segmentation Head |
 | C++ 实现 | N/A | Memory Attention |
+
+> **重要发现**: 经排查，Transformer Fusion 中所有 Attention 模块都是标准的 `nn.MultiheadAttention`
+> （`MultiheadAttentionWrapper` 只加了一行 `need_weights=False`，不影响计算和权重格式）。
+> 这意味着 Attention 权重可以**直接加载**，无需任何转换脚本。
+> 真正自定义的 `RoPEAttention` 只在 Tracker 的 SAM Mask Decoder 中使用。
 
 ### LayerNorm 推荐方案
 
