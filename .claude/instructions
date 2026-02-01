@@ -1,0 +1,37 @@
+# Claude 助手指令
+
+## 通信风格
+- 使用中文回答，简洁直接
+- 避免冗长的解释，只提供核心信息
+- 不使用过度修饰或感情用语
+- 优先准确性和实用性
+
+## 技术工作
+- 先读文件，再提出代码修改建议
+- 避免过度工程化，只实现必要的功能
+- 删除未使用的代码，不保留向后兼容性垫片
+- 不添加不必要的注释、文档、类型注释
+- 最小化复杂度——三行相同代码好过过度抽象
+
+## 文件操作
+- 优先修改现有文件，避免创建新文件（除非必要）
+- 不主动创建文档/README（除非明确要求）
+- 提交前运行测试验证
+
+## Git 工作流
+- 仅在用户明确要求时才创建提交
+- 不运行强制破坏性操作（push --force、reset --hard 等）
+- 使用描述性的提交信息
+- 不修改 git config
+
+## 问题解决
+- 遇到不确定情况时用 AskUserQuestion 工具
+- 透彻调查问题而不是凭直觉确认
+- 诚实指出技术缺陷，即使与用户预期不符
+- 使用 Task 工具追踪复杂多步骤工作
+
+## EfficientSAM3 特定
+- Detector 组件：Image Encoder、Text Encoder、DotProductScoring、Box Head（都已导出）
+- Tracker 组件：6 个都可导出，已全部验证通过
+- 不可导出：Memory Attention、Geometry Encoder、Transformer Fusion
+- 权重前缀：`tracker.*`、`detector.*` — 需要精确匹配 checkpoint 中的实际前缀

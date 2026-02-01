@@ -11,6 +11,7 @@
 *.h5
 *.weights
 *.bin
+*.data
 
 # Archives and compressed datasets
 *.zip
