@@ -5,12 +5,12 @@ Export EfficientSAM3 Image Model to ONNX — full text-grounding pipeline.
 Exports 3 components:
   1. Image Encoder  (RepViT + Neck → 3 scales + position encoding)
   2. Text Encoder   (MobileCLIP-S1 → text features + mask)
-  3. Detector       (Geometry CLS + Encoder Fusion + Decoder + Scoring + Segmentation)
+  3. Decoder        (Geometry CLS + Encoder Fusion + Decoder + Scoring + Segmentation)
 
 End-to-end inference flow:
   feat_4x, feat_2x, feat_1x, pos_1x = image_encoder(images)
   text_features, text_mask           = text_encoder(token_ids)
-  scores, boxes_xyxy, mask_logits    = detector(feat_4x, feat_2x, feat_1x, pos_1x,
+  scores, boxes_xyxy, mask_logits    = decoder(feat_4x, feat_2x, feat_1x, pos_1x,
                                                  text_features, text_mask)
 
 Usage:
@@ -162,8 +162,8 @@ class TextEncoderWrapper(nn.Module):
         return text_features, text_mask
 
 
-class DetectorWrapper(nn.Module):
-    """Full text-grounding detector pipeline in a single ONNX-exportable module.
+class DecoderWrapper(nn.Module):
+    """Full text-grounding decoder pipeline in a single ONNX-exportable module.
 
     Wraps: Geometry CLS → Encoder Fusion → Decoder → Scoring → Boxes → Masks.
 
@@ -440,10 +440,10 @@ def main():
         opset=opset, atol=1e-4, skip_verify=sv,
     )
 
-    # ---- 3. Detector (full pipeline) ----
-    print(f"\n{'='*60}\n3/3  Detector (GeoEnc + EncoderFusion + Decoder + Seg)\n{'='*60}")
-    det = DetectorWrapper(model)
-    print(f"  Params: {sum(p.numel() for p in det.parameters()):,}")
+    # ---- 3. Decoder (full pipeline) ----
+    print(f"\n{'='*60}\n3/3  Decoder (GeoEnc + EncoderFusion + Decoder + Seg)\n{'='*60}")
+    dec = DecoderWrapper(model)
+    print(f"  Params: {sum(p.numel() for p in dec.parameters()):,}")
 
     # Generate realistic dummy inputs by running image & text encoders
     torch.manual_seed(42)
@@ -454,10 +454,10 @@ def main():
         d_feat_4x, d_feat_2x, d_feat_1x, d_pos_1x = ie(dummy_img)
         d_text_feat, d_text_mask = te(tids)
 
-    results["Detector"] = export_and_verify(
-        det,
+    results["Decoder"] = export_and_verify(
+        dec,
         (d_feat_4x, d_feat_2x, d_feat_1x, d_pos_1x, d_text_feat, d_text_mask),
-        os.path.join(out, "detector.onnx"),
+        os.path.join(out, "decoder.onnx"),
         ["feat_4x", "feat_2x", "feat_1x", "pos_1x", "text_features", "text_mask"],
         ["scores", "boxes_xyxy", "mask_logits"],
         opset=opset, atol=1e-3, skip_verify=sv,
@@ -469,7 +469,7 @@ def main():
     for name, ok in results.items():
         print(f"  {name:25s} [{'PASS' if ok else 'FAIL'}]")
     print()
-    for f in ["image_encoder.onnx", "text_encoder.onnx", "detector.onnx"]:
+    for f in ["image_encoder.onnx", "text_encoder.onnx", "decoder.onnx"]:
         fp = os.path.join(out, f)
         if os.path.exists(fp):
             sz = os.path.getsize(fp)

@@ -29,13 +29,13 @@
 |------|------|------|----------|
 | Image Encoder | `image_encoder.onnx` | 1.3 MB | `torch.export` (dynamo) |
 | Text Encoder | `text_encoder.onnx` | 0.5 MB | `torch.export` (dynamo) |
-| Detector | `detector.onnx` | 111.3 MB | TorchScript tracer (legacy) |
+| Decoder | `decoder.onnx` | 111.3 MB | TorchScript tracer (legacy) |
 
 ### 与旧版导出的对比
 
 旧版 `export_image_model_onnx.py` 仅导出 4 个孤立的简单组件（Image Encoder、Text Encoder、DotProductScoring、Box Head），核心检测流水线（Transformer Encoder/Decoder、Geometry Encoder、Segmentation Head）被标记为"不可导出"。
 
-新版将整个检测流水线封装为单一 `DetectorWrapper`，成功导出为 `detector.onnx`，实现了端到端推理能力。
+新版将整个检测流水线封装为单一 `DecoderWrapper`，成功导出为 `decoder.onnx`，实现了端到端推理能力。
 
 ---
 
@@ -91,7 +91,7 @@ text_mask     [1, 77] (bool, True=padding)
 - `encoder`: MobileCLIP-S1 text model
 - `projector`: 将 MobileCLIP 的 512 维降到 256 维
 
-### 2.3 Detector (`DetectorWrapper`)
+### 2.3 Decoder (`DecoderWrapper`)
 
 这是核心组件，将以下子模块串联为单一 ONNX 模型：
 
@@ -200,7 +200,7 @@ scores [1, 200], boxes_xyxy [1, 200, 4], mask_logits [1, 200, 288, 288]
 Pipeline:
   feat_4x, feat_2x, feat_1x, pos_1x = image_encoder(image)
   text_features, text_mask           = text_encoder(token_ids)
-  scores, boxes_xyxy, mask_logits    = detector(feat_4x, feat_2x, feat_1x, pos_1x,
+  scores, boxes_xyxy, mask_logits    = decoder(feat_4x, feat_2x, feat_1x, pos_1x,
                                                  text_features, text_mask)
 
 输出:
@@ -289,13 +289,13 @@ and strides (32, 51456, 6432, 1) as a tensor with shape (201, 256)
 
 **根因**: Decoder 的 `nn.MultiheadAttention` 使用 `batch_first=False`，生成的中间张量是非连续的，`torch.export` 的分解步骤尝试用 view 而非 reshape 导致失败。
 
-**解决方案**: Detector 使用 TorchScript legacy tracer (`dynamo=False`) 导出。Image Encoder 和 Text Encoder 结构较简单，使用新版 `torch.export` 导出。
+**解决方案**: Decoder 使用 TorchScript legacy tracer (`dynamo=False`) 导出。Image Encoder 和 Text Encoder 结构较简单，使用新版 `torch.export` 导出。
 
 ```python
 # Image Encoder & Text Encoder: 使用 dynamo
 torch.onnx.export(model, inputs, path, dynamo=True)
 
-# Detector: 使用 legacy tracer
+# Decoder: 使用 legacy tracer
 torch.onnx.export(model, inputs, path, dynamo=False)
 ```
 
@@ -305,7 +305,7 @@ torch.onnx.export(model, inputs, path, dynamo=False)
 
 **注意事项**: `encoder.py:352` 的 `assert all(x.dim == 4 for x in src)` 实际上有 bug —— `x.dim` 是方法引用而非调用 `x.dim()`，所以该 assert 永远不会真正生效。
 
-**解决方案**: 在 DetectorWrapper 中将 `feat_1x` 显式转换为 seq-first 格式，并传入 `feat_sizes`：
+**解决方案**: 在 DecoderWrapper 中将 `feat_1x` 显式转换为 seq-first 格式，并传入 `feat_sizes`：
 
 ```python
 H, W = feat_1x.shape[2], feat_1x.shape[3]
@@ -338,7 +338,7 @@ seg_out = self.segmentation_head(
 
 **问题**: `SequenceGeometryEncoder.forward` 支持多种 prompt 类型（boxes, points, scribbles 等），但文本引导检测只使用 CLS token 路径（dummy prompt）。完整 forward 包含大量条件分支，无法直接导出。
 
-**解决方案**: 在 DetectorWrapper 中手动实现 CLS token 路径，只提取必要的子模块：
+**解决方案**: 在 `DecoderWrapper` 中手动实现 CLS token 路径，只提取必要的子模块：
 
 ```python
 self.geo_cls_embed = geo.cls_embed          # nn.Embedding(1, 256)
@@ -399,9 +399,9 @@ PyTorch 输出与 ONNX Runtime 输出的对比：
 | Image Encoder | pos_1x [1,256,72,72] | 0.00e+00 | 1e-4 | PASS |
 | Text Encoder | text_features [1,77,256] | 3.04e-05 | 1e-4 | PASS |
 | Text Encoder | text_mask [1,77] | exact | — | PASS |
-| Detector | scores [1,200] | 1.15e-08 | 1e-3 | PASS |
-| Detector | boxes_xyxy [1,200,4] | 9.30e-06 | 1e-3 | PASS |
-| Detector | mask_logits [1,200,288,288] | 1.93e-03 | 1e-3 | PASS |
+| Decoder | scores [1,200] | 1.15e-08 | 1e-3 | PASS |
+| Decoder | boxes_xyxy [1,200,4] | 9.30e-06 | 1e-3 | PASS |
+| Decoder | mask_logits [1,200,288,288] | 1.93e-03 | 1e-3 | PASS |
 
 ### 6.2 ONNX 模型信息
 
@@ -409,7 +409,7 @@ PyTorch 输出与 ONNX Runtime 输出的对比：
 |------|------|----------|--------|
 | `image_encoder.onnx` | 1.3 MB | 14 | 21,500,896 |
 | `text_encoder.onnx` | 0.5 MB | 11 | 63,559,424 |
-| `detector.onnx` | 111.3 MB | 41 | 29,332,790 |
+| `decoder.onnx` | 111.3 MB | 41 | 29,332,790 |
 
 > 注: Text Encoder 的参数量中 MobileCLIP 原始权重占大部分（~63M），但 projector 只投影到 256 维，所以 ONNX 文件很小（仅包含 projector + 量化后的少量层）。实际 ONNX 中 text_encoder 大小仅 0.5 MB 是因为 MobileCLIP 使用了高效的 FastViT-style 文本 transformer。
 
@@ -419,7 +419,7 @@ PyTorch 输出与 ONNX Runtime 输出的对比：
 exports_repvit_m0_9/
 ├── image_encoder.onnx    (1.3 MB)
 ├── text_encoder.onnx     (0.5 MB)
-└── detector.onnx         (111.3 MB)
+└── decoder.onnx         (111.3 MB)
 ```
 
 ---
@@ -433,7 +433,7 @@ import onnxruntime as ort
 # 加载 3 个 ONNX 模型
 img_sess = ort.InferenceSession("exports_repvit_m0_9/image_encoder.onnx")
 txt_sess = ort.InferenceSession("exports_repvit_m0_9/text_encoder.onnx")
-det_sess = ort.InferenceSession("exports_repvit_m0_9/detector.onnx")
+dec_sess = ort.InferenceSession("exports_repvit_m0_9/decoder.onnx")
 
 # 准备输入
 image = np.random.randn(1, 3, 1008, 1008).astype(np.float32)  # 替换为真实图像
@@ -446,8 +446,8 @@ feat_4x, feat_2x, feat_1x, pos_1x = img_sess.run(None, {"images": image})
 # 2. Text Encoder
 text_features, text_mask = txt_sess.run(None, {"token_ids": token_ids})
 
-# 3. Detector
-scores, boxes_xyxy, mask_logits = det_sess.run(None, {
+# 3. Decoder
+scores, boxes_xyxy, mask_logits = dec_sess.run(None, {
     "feat_4x": feat_4x,
     "feat_2x": feat_2x,
     "feat_1x": feat_1x,
@@ -472,16 +472,16 @@ for i in range(valid.sum()):
 
 ## 8. 不可导出组件说明
 
-以下组件已成功包含在 `detector.onnx` 中（旧版标记为"不可导出"，现已解决）：
+以下组件已成功包含在 `decoder.onnx` 中（旧版标记为"不可导出"，现已解决）：
 
 | 组件 | 旧状态 | 新状态 | 解决方式 |
 |------|--------|--------|----------|
-| Transformer Encoder Fusion | 不可导出 | **已导出** | 封装在 DetectorWrapper，使用 legacy tracer |
+| Transformer Encoder Fusion | 不可导出 | **已导出** | 封装在 DecoderWrapper，使用 legacy tracer |
 | Transformer Decoder | 不可导出 | **已导出** | Monkey-patch RPB + legacy tracer |
-| Segmentation Head | 不可导出 | **已导出** | 传入 prompt 参数，封装在 DetectorWrapper |
+| Segmentation Head | 不可导出 | **已导出** | 传入 prompt 参数，封装在 DecoderWrapper |
 | Geometry Encoder | 不可导出 | **已导出** | 手动实现 CLS-only 路径 |
-| DotProduct Scoring | 已导出 | **已导出** | 包含在 DetectorWrapper 内 |
-| Box Head | 已导出 | **已导出** | 包含在 DetectorWrapper 内 |
+| DotProduct Scoring | 已导出 | **已导出** | 包含在 DecoderWrapper 内 |
+| Box Head | 已导出 | **已导出** | 包含在 DecoderWrapper 内 |
 
 ### Tracker 组件（不在此脚本范围内）
 
