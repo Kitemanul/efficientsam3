@@ -189,7 +189,7 @@ def main():
                         help="Minimum confidence score")
     parser.add_argument("--nms-threshold", type=float, default=0.5,
                         help="NMS IoU threshold")
-    parser.add_argument("--top-k", type=int, default=10,
+    parser.add_argument("--top-k", type=int, default=6,
                         help="Maximum number of detections to display")
     parser.add_argument("--bpe-path", type=str, default=None,
                         help="Path to BPE vocab file (default: auto-detect)")
@@ -216,7 +216,7 @@ def main():
         os.path.join(args.onnx_dir, "text_encoder.onnx"), providers=providers
     )
     dec_sess = ort.InferenceSession(
-        os.path.join(args.onnx_dir, "decoder.onnx"), providers=providers
+        os.path.join(args.onnx_dir, "detector.onnx"), providers=providers
     )
     print("  Done.")
 
@@ -246,7 +246,7 @@ def main():
         "feat_1x": feat_1x,
         "pos_1x": pos_1x,
         "text_features": text_features,
-        "text_mask": text_mask,
+        "text_mask": text_mask
     })
     # scores: [1, 200], boxes_xyxy: [1, 200, 4], mask_logits: [1, 200, H, H]
     scores = scores[0]          # [200]

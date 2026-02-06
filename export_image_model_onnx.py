@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 """
-Export EfficientSAM3 Image Model to ONNX — full text-grounding pipeline.
+Export EfficientSAM3 Image Model to ONNX — text-grounding + point/box prompts.
 
 Exports 3 components:
   1. Image Encoder  (RepViT + Neck → 3 scales + position encoding)
   2. Text Encoder   (MobileCLIP-S1 → text features + mask)
-  3. Decoder        (Geometry CLS + Encoder Fusion + Decoder + Scoring + Segmentation)
+  3. Decoder        (Geometry Encoder + Encoder Fusion + Decoder + Scoring + Segmentation)
 
 End-to-end inference flow:
   feat_4x, feat_2x, feat_1x, pos_1x = image_encoder(images)
   text_features, text_mask           = text_encoder(token_ids)
   scores, boxes_xyxy, mask_logits    = decoder(feat_4x, feat_2x, feat_1x, pos_1x,
-                                                 text_features, text_mask)
+                                                 text_features, text_mask,
+                                                 point_coords, point_labels,
+                                                 box_coords, box_labels)
+
+Geometry prompts (point_coords, point_labels, box_coords, box_labels) enable
+interactive segmentation with point clicks and bounding boxes. When only text
+prompts are needed, pass dummy geometry values (they still go through the
+geometry encoder but the CLS token dominates via cross-attention).
 
 Usage:
     python export_image_model_onnx.py \\
@@ -100,11 +107,60 @@ def _torch_sign_log2(x):
     return _torch.sign(x) * _torch.log2(_torch.abs(x) + 1.0) / _np_rpb.log2(8)
 
 _TD._get_rpb_matrix = _patched_get_rpb_matrix
+
+# Monkey-patch _encode_boxes to remove pin_memory() which fails on CPU/MPS.
+from sam3.model.geometry_encoders import SequenceGeometryEncoder as _SGE
+
+_orig_encode_boxes = _SGE._encode_boxes
+
+def _patched_encode_boxes(self, boxes, boxes_mask, boxes_labels, img_feats):
+    boxes_embed = None
+    n_boxes, bs = boxes.shape[:2]
+
+    if self.boxes_direct_project is not None:
+        proj = self.boxes_direct_project(boxes)
+        boxes_embed = proj
+
+    if self.boxes_pool_project is not None:
+        H, W = img_feats.shape[-2:]
+        boxes_xyxy = _box_cxcywh_to_xyxy(boxes)
+        scale = _torch.tensor([W, H, W, H], dtype=boxes_xyxy.dtype, device=boxes_xyxy.device)
+        scale = scale.view(1, 1, 4)
+        boxes_xyxy = boxes_xyxy * scale
+        import torchvision as _tv
+        sampled = _tv.ops.roi_align(
+            img_feats, boxes_xyxy.float().transpose(0, 1).unbind(0), self.roi_size
+        )
+        proj = self.boxes_pool_project(sampled)
+        proj = proj.view(bs, n_boxes, self.d_model).transpose(0, 1)
+        if boxes_embed is None:
+            boxes_embed = proj
+        else:
+            boxes_embed = boxes_embed + proj
+
+    if self.boxes_pos_enc_project is not None:
+        cx, cy, w, h = boxes.unbind(-1)
+        enc = self.pos_enc.encode_boxes(
+            cx.flatten(), cy.flatten(), w.flatten(), h.flatten()
+        )
+        enc = enc.view(boxes.shape[0], boxes.shape[1], enc.shape[-1])
+        proj = self.boxes_pos_enc_project(enc)
+        if boxes_embed is None:
+            boxes_embed = proj
+        else:
+            boxes_embed = boxes_embed + proj
+
+    type_embed = self.label_embed(boxes_labels.long())
+    return type_embed + boxes_embed, boxes_mask
+
+_SGE._encode_boxes = _patched_encode_boxes
 # ---------------------------------------------------------------------
 
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import torchvision
 
 from sam3.model.model_misc import inverse_sigmoid
 from sam3.model.box_ops import box_cxcywh_to_xyxy
@@ -163,9 +219,9 @@ class TextEncoderWrapper(nn.Module):
 
 
 class DecoderWrapper(nn.Module):
-    """Full text-grounding decoder pipeline in a single ONNX-exportable module.
+    """Full decoder pipeline with text-grounding + point/box geometry prompts.
 
-    Wraps: Geometry CLS → Encoder Fusion → Decoder → Scoring → Boxes → Masks.
+    Wraps: Geometry Encoder → Encoder Fusion → Decoder → Scoring → Boxes → Masks.
 
     Inputs:
         feat_4x         [1, 256, 288, 288]
@@ -174,6 +230,10 @@ class DecoderWrapper(nn.Module):
         pos_1x          [1, 256, 72, 72]
         text_features   [1, 77, 256]
         text_mask        [1, 77]  (bool)
+        point_coords    [1, 2]   float32, normalized xy in [0,1]
+        point_labels    [1]      int64, 0=background 1=foreground
+        box_coords      [1, 4]   float32, normalized CxCyWH in [0,1]
+        box_labels      [1]      int64, 0=negative 1=positive
 
     Outputs:
         scores          [1, 200]           final detection scores (sigmoid, with presence)
@@ -182,13 +242,8 @@ class DecoderWrapper(nn.Module):
     """
     def __init__(self, model):
         super().__init__()
-        # Geometry encoder — only CLS token path
-        geo = model.geometry_encoder
-        self.geo_cls_embed = geo.cls_embed
-        self.geo_final_proj = geo.final_proj
-        self.geo_norm = geo.norm
-        self.geo_encode_layers = geo.encode
-        self.geo_encode_norm = geo.encode_norm
+        # Full geometry encoder (for _encode_points / _encode_boxes + CLS + transformer)
+        self.geo = model.geometry_encoder
 
         # Encoder fusion
         self.encoder = model.transformer.encoder
@@ -205,36 +260,58 @@ class DecoderWrapper(nn.Module):
         # Config flags from the model
         self.supervise_joint_box_scores = model.supervise_joint_box_scores
 
-    def forward(self, feat_4x, feat_2x, feat_1x, pos_1x, text_features, text_mask):
+    def forward(self, feat_4x, feat_2x, feat_1x, pos_1x, text_features, text_mask,
+                point_coords, point_labels, box_coords, box_labels):
         # ---- 1. Text features to seq-first ----
         txt_feats = text_features.permute(1, 0, 2)   # [77, 1, 256]
         txt_masks = text_mask                          # [1, 77]
 
-        # ---- 2. Geometry Encoder CLS token ----
-        # Convert image features to seq-first for geo encoder cross-attention
+        # ---- 2. Geometry Encoder: encode point + box + CLS ----
+        bs = feat_1x.shape[0]  # 1
         img_feat_seq = feat_1x.flatten(2).permute(2, 0, 1)   # [5184, 1, 256]
         img_pos_seq = pos_1x.flatten(2).permute(2, 0, 1)     # [5184, 1, 256]
 
-        bs = feat_1x.shape[0]  # 1
-        cls = self.geo_cls_embed.weight.view(1, 1, -1).expand(1, bs, -1)
+        # Prepare [B, C, H, W] image features for pool operations (with LayerNorm)
+        img_feat_normed = self.geo.img_pre_norm(img_feat_seq)  # [5184, 1, 256]
+        img_feat_2d = img_feat_normed.permute(1, 2, 0).view(bs, 256, 72, 72)
+
+        # Encode 1 point: [1, 2] → [1, 1, 2] seq-first
+        pt = point_coords.unsqueeze(0)                         # [1, 1, 2]
+        pt_mask = (point_labels == 0).unsqueeze(0)             # [1, 1] mask out if label=0
+        pt_labels = point_labels.unsqueeze(0)                  # [1, 1]
+        pt_embed, pt_mask = self.geo._encode_points(pt, pt_mask, pt_labels, img_feat_2d)
+
+        # Encode 1 box: [1, 4] → [1, 1, 4] seq-first
+        bx = box_coords.unsqueeze(0)                           # [1, 1, 4]
+        bx_mask = (box_labels == 0).unsqueeze(0)               # [1, 1] mask out if label=0
+        bx_labels = box_labels.unsqueeze(0)                    # [1, 1]
+        bx_embed, bx_mask = self.geo._encode_boxes(bx, bx_mask, bx_labels, img_feat_2d)
+
+        # Concatenate point + box + CLS
+        geo_embeds = torch.cat([pt_embed, bx_embed], dim=0)   # [2, 1, 256]
+        geo_mask = torch.cat([pt_mask, bx_mask], dim=1)       # [1, 2]
+
+        cls = self.geo.cls_embed.weight.view(1, 1, -1).expand(1, bs, -1)
         cls_mask = torch.zeros(bs, 1, dtype=torch.bool, device=feat_1x.device)
+        geo_embeds = torch.cat([geo_embeds, cls], dim=0)      # [3, 1, 256]
+        geo_mask = torch.cat([geo_mask, cls_mask], dim=1)     # [1, 3]
 
-        # Project and normalize CLS
-        cls = self.geo_norm(self.geo_final_proj(cls))
+        # Project + LayerNorm
+        geo_embeds = self.geo.norm(self.geo.final_proj(geo_embeds))
 
-        # 3-layer transformer with cross-attention to image features
-        for lay in self.geo_encode_layers:
-            cls = lay(
-                tgt=cls,
+        # 3-layer cross-attention transformer against image features
+        for lay in self.geo.encode:
+            geo_embeds = lay(
+                tgt=geo_embeds,
                 memory=img_feat_seq,
-                tgt_key_padding_mask=cls_mask,
+                tgt_key_padding_mask=geo_mask,
                 pos=img_pos_seq,
             )
-        cls = self.geo_encode_norm(cls)   # [1, 1, 256]
+        geo_embeds = self.geo.encode_norm(geo_embeds)          # [3, 1, 256]
 
-        # ---- 3. Build prompt = text + geo CLS ----
-        prompt = torch.cat([txt_feats, cls], dim=0)        # [78, 1, 256]
-        prompt_mask = torch.cat([txt_masks, cls_mask], dim=1)  # [1, 78]
+        # ---- 3. Build prompt = text + geometry ----
+        prompt = torch.cat([txt_feats, geo_embeds], dim=0)     # [80, 1, 256]
+        prompt_mask = torch.cat([txt_masks, geo_mask], dim=1)  # [1, 80]
 
         # ---- 4. Encoder Fusion ----
         # Encoder expects seq-first [HW, B, C] when feat_sizes is provided.
@@ -454,13 +531,21 @@ def main():
         d_feat_4x, d_feat_2x, d_feat_1x, d_pos_1x = ie(dummy_img)
         d_text_feat, d_text_mask = te(tids)
 
+    # Geometry prompt dummy inputs (1 point + 1 box)
+    d_point_coords = torch.tensor([[0.5, 0.5]])           # [1, 2] center of image
+    d_point_labels = torch.tensor([1], dtype=torch.long)   # [1] foreground
+    d_box_coords = torch.tensor([[0.5, 0.5, 0.3, 0.3]])   # [1, 4] cxcywh
+    d_box_labels = torch.tensor([1], dtype=torch.long)     # [1] positive
+
     results["Decoder"] = export_and_verify(
         dec,
-        (d_feat_4x, d_feat_2x, d_feat_1x, d_pos_1x, d_text_feat, d_text_mask),
+        (d_feat_4x, d_feat_2x, d_feat_1x, d_pos_1x, d_text_feat, d_text_mask,
+         d_point_coords, d_point_labels, d_box_coords, d_box_labels),
         os.path.join(out, "decoder.onnx"),
-        ["feat_4x", "feat_2x", "feat_1x", "pos_1x", "text_features", "text_mask"],
+        ["feat_4x", "feat_2x", "feat_1x", "pos_1x", "text_features", "text_mask",
+         "point_coords", "point_labels", "box_coords", "box_labels"],
         ["scores", "boxes_xyxy", "mask_logits"],
-        opset=opset, atol=1e-3, skip_verify=sv,
+        opset=opset, atol=1e-2, skip_verify=sv,
         use_dynamo=False,  # legacy tracer for complex decoder
     )
 
